@@ -142,6 +142,7 @@ function createWindow(): BrowserWindow {
       url.searchParams.set('theme', process.env.WHITEBOARD_THEME);
     }
     if (process.env.WHITEBOARD_E2E === '1') url.searchParams.set('e2e', '1');
+    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_INTRO === '1') url.searchParams.set('intro', '1');
     void win.loadURL(url.toString());
   } else {
     const query: Record<string, string> = {};
@@ -150,6 +151,7 @@ function createWindow(): BrowserWindow {
       query.theme = process.env.WHITEBOARD_THEME;
     }
     if (process.env.WHITEBOARD_E2E === '1') query.e2e = '1';
+    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_INTRO === '1') query.intro = '1';
     void win.loadFile(path.join(__dirname, '../renderer/index.html'), { query });
   }
 
@@ -291,6 +293,14 @@ const TRASH_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const TRASH_MAX_BYTES = 60 * 1024 * 1024;
 
 type StoredTrash = { id: string; at: number; title: string; count: number; clip: string };
+
+/** Trash reads and writes run one after another; otherwise a quick delete + add could overwrite each other. */
+let trashQueue: Promise<unknown> = Promise.resolve();
+function withTrash<T>(work: () => Promise<T>): Promise<T> {
+  const next = trashQueue.then(work, work);
+  trashQueue = next.catch(() => undefined);
+  return next;
+}
 
 async function readTrash(): Promise<StoredTrash[]> {
   try {
@@ -599,31 +609,37 @@ function registerIpc(): void {
     const { title, count, clip } = payload as { title?: unknown; count?: unknown; clip?: unknown };
     if (typeof title !== 'string' || typeof count !== 'number' || typeof clip !== 'string' || clip.length > 40 * 1024 * 1024) return null;
     try {
-      const entries = await readTrash();
-      const id = randomUUID();
-      entries.unshift({ id, at: Date.now(), title: title.slice(0, 120), count: Math.max(1, Math.round(count)), clip });
-      await writeTrash(entries);
-      return id;
+      return await withTrash(async () => {
+        const entries = await readTrash();
+        const id = randomUUID();
+        entries.unshift({ id, at: Date.now(), title: title.slice(0, 120), count: Math.max(1, Math.round(count)), clip });
+        await writeTrash(entries);
+        return id;
+      });
     } catch {
       return null;
     }
   });
 
-  ipcMain.handle(Ipc.trashList, async () => (await readTrash()).map(({ id, at, title, count }) => ({ id, at, title, count })));
+  ipcMain.handle(Ipc.trashList, async () => withTrash(async () => (await readTrash()).map(({ id, at, title, count }) => ({ id, at, title, count }))));
 
-  ipcMain.handle(Ipc.trashTake, async (_event, id: unknown) => {
-    const entries = await readTrash();
-    const entry = entries.find((item) => item.id === id);
-    if (!entry) return { ok: false, error: 'Dieser Eintrag ist nicht mehr im Papierkorb.' };
-    await writeTrash(entries.filter((item) => item.id !== id));
-    return { ok: true, clip: entry.clip };
-  });
+  ipcMain.handle(Ipc.trashTake, async (_event, id: unknown) =>
+    withTrash(async () => {
+      const entries = await readTrash();
+      const entry = entries.find((item) => item.id === id);
+      if (!entry) return { ok: false, error: 'Dieser Eintrag ist nicht mehr im Papierkorb.' };
+      await writeTrash(entries.filter((item) => item.id !== id));
+      return { ok: true, clip: entry.clip };
+    }),
+  );
 
-  ipcMain.handle(Ipc.trashDelete, async (_event, id: unknown) => {
-    const entries = await readTrash();
-    await writeTrash(id === 'all' ? [] : entries.filter((item) => item.id !== id));
-    return true;
-  });
+  ipcMain.handle(Ipc.trashDelete, async (_event, id: unknown) =>
+    withTrash(async () => {
+      const entries = await readTrash();
+      await writeTrash(id === 'all' ? [] : entries.filter((item) => item.id !== id));
+      return true;
+    }),
+  );
 
   ipcMain.handle(Ipc.takePendingOpen, async () => {
     const target = pendingOpen;

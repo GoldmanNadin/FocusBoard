@@ -464,3 +464,20 @@ html[data-theme="dark"] .text-comment { background: #3a3420; color: #fff3c4; bor
 .trash-entry > span:first-child > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trash-actions { display: flex; gap: 4px; flex: none; }
 .trash-empty { align-self: flex-end; }
+
+.top-actions .icon-button { min-width: 38px; font-size: 18px; line-height: 1; padding: 8px 10px; }
+.palette-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(20, 14, 6, 0.28); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.palette { width: min(560px, calc(100vw - 32px)); max-height: 70vh; display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--chrome); color: var(--chrome-ink); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--drag-shadow); animation: pop-in 120ms ease-out; }
+.palette input { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--canvas); color: var(--ink); font-size: 15px; }
+.palette-list { list-style: none; margin: 0; padding: 0; overflow: auto; }
+.palette-list button { width: 100%; display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; align-items: center; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 9px; }
+.palette-list button.is-active { background: var(--toolbar); }
+.palette-group { font-size: 12px; color: var(--muted); }
+.palette-list kbd { font: inherit; font-size: 12px; color: var(--muted); }
+.intro { width: min(460px, calc(100vw - 32px)); padding: 22px 24px; background: var(--chrome); color: var(--chrome-ink); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--drag-shadow); animation: pop-in 120ms ease-out; }
+.intro h2 { margin: 4px 0 8px; font-family: var(--hand); font-size: 28px; font-weight: 400; }
+.intro p { line-height: 1.5; }
+.intro-step { margin: 0; font-size: 12px; color: var(--muted); }
+.intro-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.intro-actions button { border: 1px solid var(--line); background: var(--chrome); border-radius: 10px; padding: 6px 14px; }
+.intro-actions .intro-next { background: #ffe14a; color: #1a1408; }

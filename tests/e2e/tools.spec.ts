@@ -696,6 +696,8 @@ test('undoing a deletion takes it out of the trash, redo puts it back', async ()
   const trashCount = async () => {
     await page.getByTestId('file-menu').click();
     await page.getByTestId('open-trash').click();
+    // The list loads from the main process; count only once it is on screen.
+    await page.getByTestId('trash-panel').waitFor();
     const count = await page.getByTestId('trash-entry').count();
     await page.getByRole('button', { name: 'Papierkorb schließen' }).click();
     return count;
@@ -882,5 +884,48 @@ test('keys typed in the instant after creating a card are not lost and do not tr
   await page.keyboard.press('Escape');
   await expect(page.locator('.text-comment .card-copy')).toHaveText('Bbbb');
   await expect(page.getByTestId('tool-board')).toHaveAttribute('aria-pressed', 'false');
+  await app.close();
+});
+
+test('first start shows a short introduction once; Ctrl+K and F1 list and run every command', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-intro-'));
+  const env = { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData, WHITEBOARD_E2E_INTRO: '1' };
+  let app = await electron.launch({ args: ['.'], cwd: process.cwd(), env });
+  let page = await app.firstWindow();
+  const intro = page.getByTestId('intro');
+  await expect(intro).toBeVisible({ timeout: 30_000 });
+  await expect(intro).toContainText('Schritt 1 von 3');
+  await page.getByTestId('intro-next').click();
+  await page.getByTestId('intro-next').click();
+  await expect(intro).toContainText('Strg+K');
+  await page.getByTestId('intro-next').click();
+  await expect(intro).toHaveCount(0);
+  await page.reload();
+  await page.getByTestId('tool-note').waitFor();
+  await expect(page.getByTestId('intro')).toHaveCount(0);
+
+  await page.keyboard.press('Control+K');
+  await expect(page.getByTestId('palette')).toBeVisible();
+  expect(await page.getByTestId('palette-item').count()).toBeGreaterThan(30);
+  await page.getByTestId('palette-input').fill('kanban');
+  await expect(page.getByTestId('palette-item')).toHaveCount(1);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('palette')).toHaveCount(0);
+  await expect(page.locator('.card-column')).toHaveCount(3);
+
+  await page.keyboard.press('F1');
+  await page.getByTestId('palette-input').fill('dunkel');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.keyboard.press('Control+K');
+  await page.getByTestId('palette-input').fill('gibt es nicht');
+  await expect(page.locator('.palette .search-empty')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('palette')).toHaveCount(0);
+  await page.getByTestId('palette-open').click();
+  await page.getByTestId('palette-input').fill('einführung');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('intro')).toBeVisible();
+  await page.getByTestId('intro-skip').click();
   await app.close();
 });

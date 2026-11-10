@@ -127,6 +127,10 @@ function Workbench() {
   const [toast, setToast] = useState<Toast | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [introStep, setIntroStep] = useState<number | null>(() =>
+    (params.get('e2e') === '1' && params.get('intro') !== '1') || params.get('demo') === '1' || readPref('focusboard-intro-done') === '1' ? null : 0,
+  );
   const [recent, setRecent] = useState<RecentBoard[]>([]);
   const [trash, setTrash] = useState<TrashEntry[] | null>(null);
   const [showMiniMap, setShowMiniMap] = useState(() => readPref('focusboard-minimap') === '1');
@@ -787,6 +791,74 @@ function Workbench() {
     openTrash();
   }
 
+  function toggleTheme() {
+    const result = setTheme(histRef.current.present, histRef.current.present.theme === 'dark' ? 'light' : 'dark');
+    if (result.ok) live(result.doc);
+  }
+
+  function toggleFont() {
+    setFont((value) => (value === 'hand' ? 'clear' : 'hand'));
+  }
+
+  function openPalette() {
+    setFileOpen(false);
+    setMoreOpen(false);
+    setContextMenu(null);
+    setPaletteOpen(true);
+  }
+
+  function finishIntro() {
+    setIntroStep(null);
+    writePref('focusboard-intro-done', '1');
+  }
+
+  /** Every command of the app in one list: used by the command palette (Ctrl+K) and the shortcut overview (F1). */
+  function commands(): Command[] {
+    const tool = (id: Tool, label: string, key: string): Command => ({ id: `tool-${id}`, group: 'Werkzeuge', label, shortcut: key, run: () => chooseTool(id) });
+    return [
+      tool('note', 'Notiz anlegen', 'N'),
+      tool('heading', 'Große Überschrift', 'T'),
+      tool('subheading', 'Kleine Überschrift', 'U'),
+      { id: 'image', group: 'Werkzeuge', label: 'Bild einfügen', shortcut: 'I', run: () => void addImage() },
+      tool('link', 'Link anlegen', 'K'),
+      tool('subboard', 'Unterboard anlegen', 'B'),
+      tool('column', 'Spalte anlegen', 'S'),
+      tool('todo', 'Aufgabenliste anlegen', 'A'),
+      tool('draw', 'Zeichnen', 'P'),
+      tool('line', 'Linie zeichnen', 'L'),
+      { id: 'table', group: 'Werkzeuge', label: 'Tabelle einfügen', run: () => addFromMore('table') },
+      { id: 'swatch', group: 'Werkzeuge', label: 'Farbfeld einfügen', run: () => addFromMore('swatch') },
+      { id: 'shape', group: 'Werkzeuge', label: 'Form einfügen (Rechteck)', run: () => addFromMore('rect') },
+      { keywords: 'anhang pdf word excel dokument', id: 'attach', group: 'Werkzeuge', label: 'Datei anhängen', run: () => attachInput.current?.click() },
+      ...TEMPLATES.map((template): Command => ({ id: `template-${template.name}`, group: 'Vorlagen', label: `Vorlage: ${template.label}`, run: () => addTemplate(template.name) })),
+      { id: 'undo', group: 'Bearbeiten', label: 'Rückgängig', shortcut: 'Strg+Z', run: undo },
+      { id: 'redo', group: 'Bearbeiten', label: 'Wiederholen', shortcut: 'Strg+Y', run: redo },
+      { id: 'copy', group: 'Bearbeiten', label: 'Kopieren', shortcut: 'Strg+C', run: () => copySelection(null) },
+      { id: 'paste', group: 'Bearbeiten', label: 'Einfügen', shortcut: 'Strg+V', run: () => clipRef.current && pasteClipAt(clipRef.current.clip, pastePoint()) },
+      { id: 'duplicate', group: 'Bearbeiten', label: 'Duplizieren', shortcut: 'Strg+D', run: duplicateSelection },
+      { id: 'select-all', group: 'Bearbeiten', label: 'Alles auswählen', shortcut: 'Strg+A', run: () => selectCards('all') },
+      { keywords: 'entfernen weg', id: 'delete', group: 'Bearbeiten', label: 'Auswahl löschen', shortcut: 'Entf', run: () => void deleteWithConfirm(selectedIds) },
+      { keywords: 'finden suche', id: 'search', group: 'Ansicht', label: 'In allen Boards suchen', shortcut: 'Strg+F', run: () => setSearchOpen(true) },
+      { keywords: 'zoom einpassen überblick', id: 'fit', group: 'Ansicht', label: 'Alles anzeigen', run: () => void placementRef.current?.fitAll() },
+      { keywords: 'dunkel hell modus nacht farbe thema', id: 'theme', group: 'Ansicht', label: histRef.current.present.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema', run: toggleTheme },
+      { keywords: 'schrift handschrift klar lesbar', id: 'font', group: 'Ansicht', label: font === 'hand' ? 'Klare Schrift' : 'Handschrift', run: toggleFont },
+      { keywords: 'karte übersicht minimap', id: 'minimap', group: 'Ansicht', label: showMiniMap ? 'Übersichtskarte ausblenden' : 'Übersichtskarte einblenden', run: () => setShowMiniMap((value) => !value) },
+      { id: 'home', group: 'Ansicht', label: 'Zum Hauptboard', run: () => lookup.openBoard(doc.rootBoardId) },
+      { id: 'new', group: 'Datei', label: 'Neues Board', shortcut: 'Strg+N', run: () => void newDocument() },
+      { id: 'open', group: 'Datei', label: 'Öffnen …', shortcut: 'Strg+O', run: () => void openDocument() },
+      { id: 'save', group: 'Datei', label: 'Speichern', shortcut: 'Strg+S', run: () => void save(false) },
+      { id: 'save-as', group: 'Datei', label: 'Speichern unter …', shortcut: 'Strg+Umschalt+S', run: () => void save(true) },
+      { keywords: 'bild png foto teilen', id: 'export-png', group: 'Datei', label: 'Als Bild exportieren (PNG)', run: () => void exportImage('png') },
+      { keywords: 'pdf drucken teilen', id: 'export-pdf', group: 'Datei', label: 'Als PDF exportieren', run: () => void exportImage('pdf') },
+      { keywords: 'gelöscht wiederherstellen papierkorb', id: 'trash', group: 'Datei', label: 'Papierkorb öffnen', run: openTrash },
+      { id: 'intro', group: 'Hilfe', label: 'Einführung zeigen', run: () => setIntroStep(0) },
+      { id: 'help-snap', group: 'Hilfe', label: 'Frei platzieren ohne Einrasten', shortcut: 'Alt beim Ziehen', run: () => undefined },
+      { id: 'help-pan', group: 'Hilfe', label: 'Fläche verschieben', shortcut: 'Leertaste + Ziehen / Mausrad', run: () => undefined },
+      { id: 'help-zoom', group: 'Hilfe', label: 'Zoomen', shortcut: 'Strg + Mausrad', run: () => undefined },
+      { id: 'help-edit', group: 'Hilfe', label: 'Karte bearbeiten', shortcut: 'Doppelklick / Enter / F2', run: () => undefined },
+    ];
+  }
+
   function refreshRecent() {
     void api.listRecent().then(setRecent, () => setRecent([]));
   }
@@ -1217,6 +1289,11 @@ function Workbench() {
         selectCards('all');
         return;
       }
+      if ((meta && event.key.toLowerCase() === 'k') || event.key === 'F1') {
+        event.preventDefault();
+        openPalette();
+        return;
+      }
       if (meta && event.key.toLowerCase() === 'f') {
         event.preventDefault();
         setSearchOpen(true);
@@ -1428,23 +1505,31 @@ function Workbench() {
           <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0} onClick={() => { if (editingRef.current) finishEdit(); redo(); }}>
             <IconRedo />
           </button>
-          <button type="button" data-testid="search-open" aria-label="Suchen (Strg+F)" title="Suchen (Strg+F)" onClick={() => setSearchOpen(true)}>
-            Suchen
+          <button type="button" className="icon-button" data-testid="search-open" aria-label="Suchen (Strg+F)" title="Suchen (Strg+F)" onClick={() => setSearchOpen(true)}>
+            <span aria-hidden="true">⌕</span>
+          </button>
+          <button type="button" className="icon-button" data-testid="palette-open" aria-label="Alle Befehle (Strg+K)" title="Alle Befehle und Tastenkürzel (Strg+K, F1)" onClick={() => openPalette()}>
+            <span aria-hidden="true">⌘</span>
           </button>
           <button
             type="button"
+            className="icon-button"
             data-testid="font-toggle"
             aria-label={font === 'hand' ? 'Klare Schrift verwenden' : 'Handschrift verwenden'}
-            title={font === 'hand' ? 'Auf klare Schrift umstellen' : 'Auf Handschrift umstellen'}
-            onClick={() => setFont((value) => (value === 'hand' ? 'clear' : 'hand'))}
+            title={font === 'hand' ? 'Schrift: Handschrift (klicken für klare Schrift)' : 'Schrift: klar (klicken für Handschrift)'}
+            onClick={toggleFont}
           >
-            {font === 'hand' ? 'Schrift: Hand' : 'Schrift: Klar'}
+            <span aria-hidden="true" style={{ fontFamily: font === 'hand' ? '"Patrick Hand", sans-serif' : 'inherit' }}>Aa</span>
           </button>
-          <button type="button" data-testid="theme-toggle" aria-label={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'} onClick={() => {
-            const result = setTheme(histRef.current.present, doc.theme === 'dark' ? 'light' : 'dark');
-            if (result.ok) live(result.doc);
-          }}>
-            {doc.theme === 'dark' ? 'Hell' : 'Dunkel'}
+          <button
+            type="button"
+            className="icon-button"
+            data-testid="theme-toggle"
+            aria-label={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'}
+            title={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'}
+            onClick={toggleTheme}
+          >
+            <span aria-hidden="true">{doc.theme === 'dark' ? '☀' : '☾'}</span>
           </button>
           <div className="menu">
             <button type="button" data-testid="file-menu" aria-expanded={fileOpen} onClick={() => { setFileOpen((open) => !open); setMoreOpen(false); refreshRecent(); }}>
@@ -1889,6 +1974,8 @@ function Workbench() {
           ) : null}
         </main>
       </div>
+      {paletteOpen ? <CommandPalette commands={commands()} onClose={() => setPaletteOpen(false)} /> : null}
+      {introStep !== null ? <Intro step={introStep} onStep={setIntroStep} onDone={finishIntro} /> : null}
       {linkPrompt ? (
         <form
           className="link-prompt"
@@ -2014,6 +2101,93 @@ function SearchPanel({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+type Command = { id: string; group: string; label: string; shortcut?: string; keywords?: string; run: () => void };
+
+function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const fold = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const shown = commands.filter((command) => words.every((word) => fold(`${command.group} ${command.label} ${command.shortcut ?? ''} ${command.keywords ?? ''}`).includes(word)));
+  const run = (command: Command | undefined) => {
+    if (!command) return;
+    onClose();
+    // Run after the palette is gone, so focus and menus behave as if the command was clicked directly.
+    window.setTimeout(command.run, 0);
+  };
+  return (
+    <div className="palette-backdrop" onPointerDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="palette" role="dialog" aria-label="Befehle und Tastenkürzel" data-testid="palette">
+        <input
+          autoFocus
+          data-testid="palette-input"
+          aria-label="Befehl suchen"
+          placeholder="Befehl suchen … (z. B. „pdf“, „spalte“, „dunkel“)"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setActive(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onClose();
+            } else if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setActive((value) => Math.min(shown.length - 1, value + 1));
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActive((value) => Math.max(0, value - 1));
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              run(shown[active]);
+            }
+          }}
+        />
+        <ul className="palette-list" role="listbox">
+          {shown.length === 0 ? <li className="search-empty">Kein Befehl gefunden.</li> : null}
+          {shown.map((command, index) => (
+            <li key={command.id} role="option" aria-selected={index === active}>
+              <button type="button" data-testid="palette-item" className={index === active ? 'is-active' : undefined} onMouseEnter={() => setActive(index)} onClick={() => run(command)}>
+                <span className="palette-group">{command.group}</span>
+                <span className="palette-label">{command.label}</span>
+                {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+const INTRO_STEPS = [
+  { title: 'Willkommen bei FocusBoard', text: 'Eine freie Fläche für Notizen, Bilder, Listen, Links, Skizzen und Unterboards. Alles bleibt auf deinem Rechner.' },
+  { title: 'Karten anlegen', text: 'Doppelklick auf die Fläche legt eine Notiz an. Werkzeuge links anklicken oder auf die Fläche ziehen. Bilder und Dateien einfach hineinziehen oder mit Strg+V einfügen.' },
+  { title: 'Schneller arbeiten', text: 'Strg+K zeigt alle Befehle und Tastenkürzel. Strg+F sucht in allen Boards. Rechtsklick auf eine Karte zeigt, was mit ihr möglich ist. Sobald du einmal gespeichert hast, speichert FocusBoard automatisch.' },
+];
+
+function Intro({ step, onStep, onDone }: { step: number; onStep: (step: number) => void; onDone: () => void }) {
+  const current = INTRO_STEPS[step] ?? INTRO_STEPS[0]!;
+  const last = step >= INTRO_STEPS.length - 1;
+  return (
+    <div className="palette-backdrop">
+      <div className="intro" role="dialog" aria-label="Einführung" data-testid="intro">
+        <p className="intro-step">Schritt {step + 1} von {INTRO_STEPS.length}</p>
+        <h2>{current.title}</h2>
+        <p>{current.text}</p>
+        <div className="intro-actions">
+          <button type="button" data-testid="intro-skip" onClick={onDone}>Überspringen</button>
+          {step > 0 ? <button type="button" onClick={() => onStep(step - 1)}>Zurück</button> : null}
+          <button type="button" className="intro-next" data-testid="intro-next" autoFocus onClick={() => (last ? onDone() : onStep(step + 1))}>
+            {last ? 'Los geht’s' : 'Weiter'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

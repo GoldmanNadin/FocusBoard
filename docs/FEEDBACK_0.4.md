@@ -71,6 +71,19 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Elfter Schritt: Befehlssuche, Einführung, aufgeräumte Leiste
+
+Stand: 55 Unit-Tests und 51 Oberflächentests grün, dreimal hintereinander. Die Empfehlungen aus der Heuristik-Prüfung (Punkte 7, 8 und 10) sind umgesetzt:
+
+| Punkt | Was jetzt geht |
+|---|---|
+| Befehlssuche (Strg+K, F1) | Alle rund 40 Befehle mit Gruppe und Tastenkürzel, also gleichzeitig die Kürzel-Übersicht. Die Suche ignoriert Umlaute und kennt Suchwörter („dunkel“ findet „Dunkles Thema“, „pdf“ findet Export und Anhänge). ↑/↓ und Enter führen aus, Escape schließt. Auch über das ⌘-Symbol oben erreichbar. |
+| Einführung beim ersten Start | Drei kurze Schritte (Was ist FocusBoard, Karten anlegen, schneller arbeiten), überspringbar, erscheint nur einmal. Später über die Befehlssuche („Einführung zeigen“) wieder aufrufbar. |
+| Obere Leiste | Suchen, Befehle, Schrift und Thema sind kompakte Symbol-Knöpfe (⌕, ⌘, Aa, ☾/☀) mit Tooltip statt vier Text-Knöpfen. |
+| Papierkorb (Hauptprozess) | Lese- und Schreibzugriffe laufen jetzt strikt nacheinander. Vorher konnten ein schnelles Löschen und Anlegen eines Eintrags (Strg+Z, dann Strg+Y) sich gegenseitig überschreiben. |
+
+Nielsen-Bewertung nach diesem Schritt: 7 (Flexibilität), 8 (Minimalismus) und 10 (Hilfe) jetzt ebenfalls „gut“.
+
 ### Zehnter Schritt: Skalierung, Stift, Milanote-Vergleich, Heuristik-Prüfung
 
 **Skalierung:** Die komplette Oberflächen-Testsuite (47 Tests) läuft zusätzlich mit erzwungener Bildschirmskalierung 150 % und 200 % (`WHITEBOARD_SCALE=1.5` bzw. `2`, nur im Testmodus wirksam; geprüft: `devicePixelRatio` = 1,5). Ergebnis: alle grün. Chromium skaliert hier genauso wie unter Windows. Nicht abgedeckt ist nur das Verhalten beim Verschieben des Fensters zwischen Monitoren mit unterschiedlicher Skalierung.
