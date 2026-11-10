@@ -1,4 +1,5 @@
 export const RECOVERY_FILE_NAME = 'recovery-autosave.json';
+export const RECOVERY_PREVIOUS_NAME = 'recovery-previous.json';
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/\/+$/, '');

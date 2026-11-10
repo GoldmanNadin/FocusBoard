@@ -1,5 +1,5 @@
-import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
-import { useEffect, useState } from 'react';
+import { Handle, NodeResizer, Position, useReactFlow, type Node, type NodeProps } from '@xyflow/react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { MIN_BOARD_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
 import type { BoardCard, ImageCard, StickerCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
@@ -36,6 +36,8 @@ export type CardLookup = {
   armGesture: () => void;
   zoom: () => number;
   resizeColumnTo: (id: string, width: number) => void;
+  setTextHeight: (id: string, height: number) => void;
+  pendingTodoFocus: (cardId: string) => string | null;
 };
 
 let lookup: CardLookup = {
@@ -62,6 +64,8 @@ let lookup: CardLookup = {
   armGesture: () => undefined,
   zoom: () => 1,
   resizeColumnTo: () => undefined,
+  setTextHeight: () => undefined,
+  pendingTodoFocus: () => null,
 };
 
 export function setCardLookup(next: CardLookup) {
@@ -94,9 +98,26 @@ function resizer(selected: boolean | undefined, min: { width: number; height: nu
 export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<Node<FlowData, 'textCard'>>) {
   const card = lookup.text(id);
   const [draft, setDraft] = useState(card?.text ?? '');
+  const measureRef = useRef<HTMLElement>(null);
+  const rf = useReactFlow();
   useEffect(() => {
     if (!data.editing) setDraft(card?.text ?? '');
   }, [card?.text, data.editing]);
+  useLayoutEffect(() => {
+    const node = measureRef.current;
+    if (!node || !card) return;
+    const previous = node.style.height;
+    node.style.height = 'auto';
+    const content = node.scrollHeight;
+    node.style.height = previous;
+    const min = card.style === 'heading' ? 76 : card.style === 'subheading' ? 64 : 160;
+    const needed = Math.max(min, Math.min(4000, Math.ceil(content + 20)));
+    if (Math.abs(needed - card.height) < 4) return;
+    lookup.setTextHeight(id, needed);
+    rf.setNodes((current) =>
+      current.map((item) => (item.id === id ? { ...item, height: needed, style: { ...item.style, height: needed, width: card.width } } : item)),
+    );
+  }, [card, data.editing, draft, id, rf]);
   if (!card) return null;
   const color = card.color ? NOTE_COLORS[card.color] : null;
   return (
@@ -107,18 +128,28 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
       data-y={Math.round(positionAbsoluteY)}
       data-model-x={Math.round(card.x)}
       data-model-y={Math.round(card.y)}
+      data-height={Math.round(card.height)}
       data-column={card.columnId ?? ''}
       style={color ? { background: color.fill, color: color.ink } : undefined}
     >
-      {resizer(selected && !data.editing, MIN_TEXT_SIZE)}
+      <NodeResizer
+        isVisible={Boolean(selected && !data.editing)}
+        minWidth={MIN_TEXT_SIZE.width}
+        minHeight={card.height}
+        maxHeight={card.height}
+        lineStyle={{ borderColor: 'var(--ink)' }}
+        handleStyle={{ width: 10, height: 10, borderRadius: 4, background: 'var(--ink)', border: 'none' }}
+      />
       <Handles visible={data.connect} />
       {data.editing ? (
         <textarea
+          ref={measureRef as RefObject<HTMLTextAreaElement>}
           className="nodrag nopan nowheel card-editor"
           data-testid="card-editor"
           data-role="card-editor"
           autoFocus
           lang="de"
+          placeholder="Hier tippen …"
           aria-label={card.style === 'note' ? 'Notiztext' : 'Überschrift'}
           value={draft}
           onChange={(event) => {
@@ -136,7 +167,7 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
           }}
         />
       ) : (
-        <div className="card-copy">{card.text || (card.style === 'note' ? 'Notiz' : 'Überschrift')}</div>
+        <div ref={measureRef as RefObject<HTMLDivElement>} className="card-copy">{card.text}</div>
       )}
     </article>
   );
@@ -272,10 +303,27 @@ export function ColumnCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
 
 export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'todoCard'>>) {
   const card = lookup.todo(id);
+  const listRef = useRef<HTMLUListElement>(null);
+  const pending = lookup.pendingTodoFocus(id);
+  useEffect(() => {
+    if (!pending || !listRef.current) return;
+    const field = listRef.current.querySelector<HTMLInputElement>(`[data-item-id="${pending}"]`);
+    field?.focus();
+  }, [pending, card?.items.length]);
   if (!card) return null;
   const done = card.items.filter((item) => item.done).length;
+  const focusItem = (itemId: string) => {
+    const field = listRef.current?.querySelector<HTMLInputElement>(`[data-item-id="${itemId}"]`);
+    field?.focus();
+  };
   return (
-    <article className={`card card-todo${selected ? ' is-selected' : ''}`} data-model-x={Math.round(card.x)} data-model-y={Math.round(card.y)} data-column={card.columnId ?? ''}>
+    <article
+      className={`card card-todo${selected ? ' is-selected' : ''}`}
+      data-model-x={Math.round(card.x)}
+      data-model-y={Math.round(card.y)}
+      data-height={Math.round(card.height)}
+      data-column={card.columnId ?? ''}
+    >
       {resizer(selected, MIN_TODO_SIZE)}
       <Handles visible={data.connect} />
       <input
@@ -286,10 +334,18 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
         onFocus={() => lookup.armGesture()}
         onBlur={() => lookup.finishEdit()}
         onChange={(event) => lookup.commitTodoTitle(id, event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.stopPropagation();
+            const first = card.items[0];
+            if (first) focusItem(first.id);
+          }
+        }}
       />
       <p className="todo-progress">{done}/{card.items.length}</p>
-      <ul>
-        {card.items.map((item) => (
+      <ul ref={listRef}>
+        {card.items.map((item, index) => (
           <li key={item.id}>
             <input
               className="nodrag nopan"
@@ -301,6 +357,7 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
             <input
               className={`nodrag nopan nowheel todo-item${item.done ? ' is-done' : ''}`}
               data-role="card-editor"
+              data-item-id={item.id}
               aria-label="Eintrag"
               value={item.text}
               onFocus={() => lookup.armGesture()}
@@ -317,11 +374,24 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
                   event.stopPropagation();
                   lookup.deleteTodoItem(id, item.id);
                 }
+                if (event.key === 'ArrowUp' && index > 0) {
+                  event.preventDefault();
+                  const previous = card.items[index - 1];
+                  if (previous) focusItem(previous.id);
+                }
+                if (event.key === 'ArrowDown' && index < card.items.length - 1) {
+                  event.preventDefault();
+                  const next = card.items[index + 1];
+                  if (next) focusItem(next.id);
+                }
               }}
             />
           </li>
         ))}
       </ul>
+      <button type="button" className="nodrag nopan todo-add" data-testid="todo-add" onClick={() => lookup.addTodoAfter(id, card.items.at(-1)?.id ?? '')}>
+        + Eintrag
+      </button>
     </article>
   );
 }

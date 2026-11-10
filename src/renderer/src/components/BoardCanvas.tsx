@@ -59,6 +59,9 @@ export function BoardCanvas(props: {
   onLinePoint: (point: { x: number; y: number }) => void;
   lines: { id: string; x1: number; y1: number; x2: number; y2: number; color: string; colorName: string; arrowhead: boolean; selected: boolean; sourceKind: string; targetKind: string }[];
   onSelectLine: (id: string | null) => void;
+  onPaneClear: () => void;
+  selectRevision: number;
+  forcedSelection: string[];
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
 }) {
@@ -73,6 +76,11 @@ export function BoardCanvas(props: {
     setNodes(toNodes(boardRef.current, props.editingId, focusRef.current, props.connect));
     setEdges(toEdges(boardRef.current));
   }, [props.syncToken, props.editingId, props.connect]);
+
+  useEffect(() => {
+    const chosen = new Set(props.forcedSelection);
+    setNodes((current) => current.map((node) => ({ ...node, selected: chosen.has(node.id) })));
+  }, [props.selectRevision]);
 
   setCardLookup(props.lookup);
 
@@ -116,6 +124,9 @@ function FlowSurface(props: {
   onLinePoint: (point: { x: number; y: number }) => void;
   lines: { id: string; x1: number; y1: number; x2: number; y2: number; color: string; colorName: string; arrowhead: boolean; selected: boolean; sourceKind: string; targetKind: string }[];
   onSelectLine: (id: string | null) => void;
+  onPaneClear: () => void;
+  selectRevision: number;
+  forcedSelection: string[];
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
 }) {
@@ -264,6 +275,7 @@ function FlowSurface(props: {
           if (props.connect) props.onConnect(connection);
         }}
         onPaneClick={(event) => {
+          props.onPaneClear();
           if (suppressClick.current) {
             suppressClick.current = false;
             return;

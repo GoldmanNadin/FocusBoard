@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.4.0';
+export const APP_VERSION = '0.4.1';
 export const FORMAT = 'digitales-whiteboard' as const;
 export const FORMAT_VERSION = 3 as const;
 

@@ -38,7 +38,8 @@
 
 * { box-sizing: border-box; animation: none !important; transition: none !important; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--canvas); color: var(--chrome-ink); overflow: hidden; }
+body { background: var(--canvas); color: var(--chrome-ink); overflow: hidden; user-select: none; }
+input, textarea, .card-editor { user-select: text; }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -103,6 +104,7 @@ svg { width: 22px; height: 22px; display: block; }
 }
 .menu-pop { right: 0; top: 42px; }
 .more-pop { left: 72px; bottom: 8px; }
+.more-pop.is-portal { position: fixed; z-index: 40; min-width: 180px; }
 .workspace { flex: 1; display: flex; }
 .toolbar {
   width: 72px;
@@ -164,12 +166,15 @@ svg { width: 22px; height: 22px; display: block; }
   margin: 8px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  overflow: auto;
+  overflow: hidden;
   background: transparent;
   border: 0;
   resize: none;
   width: calc(100% - 16px);
 }
+.card-editor::placeholder { color: var(--muted); font-style: italic; }
+.todo-add { align-self: flex-start; margin: 4px 8px 8px; border: 0; background: transparent; color: var(--muted); }
+.react-flow__viewport-portal { z-index: 6; }
 .card-image { padding: 8px; }
 .card-image img { width: 100%; height: 100%; object-fit: contain; border-radius: 16px; }
 .card-board { padding: 8px; }

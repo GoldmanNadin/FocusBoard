@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import {
   addColumn,
   addConnector,
@@ -16,12 +17,12 @@ import {
   renameBoard,
   resizeCards,
   setNoteColors,
-  setTheme,
+  setTextCardHeight,
   updateText,
   updateViewport,
 } from '../../shared/boardOps';
 import { relayoutColumn, renameColumn, setColumnWidth, settleCardDrop, toggleColumn } from '../../shared/columns';
-import { addCanvasLine, anchorPosition, deleteLines, snapAnchor, updateLine } from '../../shared/lines';
+import { addCanvasLine, anchorPosition, deleteLines, snapAnchor, updateLine, visibleLineEnds } from '../../shared/lines';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
 import { serializeDocument, validateDocument } from '../../shared/document';
 import { placementTopLeft, windowTitle } from '../../shared/gestures';
@@ -94,7 +95,19 @@ function Workbench() {
   const [lineDraft, setLineDraft] = useState<LineAnchor | null>(null);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const [headerDraft, setHeaderDraft] = useState('Hauptboard');
-  const [autosaveLabel, setAutosaveLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [recoveryStamp, setRecoveryStamp] = useState<string | null>(null);
+  const [todoFocus, setTodoFocus] = useState<{ cardId: string; itemId: string } | null>(null);
+  const [selectRevision, setSelectRevision] = useState(0);
+  const [themePref, setThemePref] = useState<'light' | 'dark' | 'system'>(() => {
+    const stored = localStorage.getItem('whiteboard-theme');
+    return stored === 'dark' || stored === 'system' || stored === 'light' ? stored : 'light';
+  });
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const freshNotes = useRef(new Set<string>());
+  const notesWithText = useRef(new Set<string>());
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const titleCancel = useRef(false);
   const histRef = useRef(hist);
   histRef.current = hist;
   const boardRef = useRef(boardId);
@@ -109,10 +122,28 @@ function Workbench() {
   if (baseline.current === null) baseline.current = contentSignature(doc);
   const dirty = contentSignature(doc) !== (savedSig ?? baseline.current);
 
+  const appearance = queryTheme ?? (themePref === 'system' ? (systemDark ? 'dark' : 'light') : themePref);
+
   useEffect(() => {
-    document.documentElement.dataset.theme = doc.theme;
-    localStorage.setItem('whiteboard-theme', doc.theme);
-  }, [doc.theme]);
+    document.documentElement.dataset.theme = appearance;
+    if (!queryTheme) localStorage.setItem('whiteboard-theme', themePref);
+  }, [appearance, queryTheme, themePref]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => setSystemDark(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (tool !== 'line') setLineDraft(null);
+  }, [tool]);
+
+  useEffect(() => {
+    setLineDraft(null);
+    setSelectedLine(null);
+  }, [boardId]);
 
   useEffect(() => {
     api.setDirty(dirty);
@@ -146,24 +177,24 @@ function Workbench() {
       }
       return;
     }
-    const stored = localStorage.getItem('whiteboard-theme');
-    if (!queryTheme && (stored === 'dark' || stored === 'light')) {
-      setHist((history) => replacePresent(history, { ...history.present, theme: stored }));
-    }
     void api.readRecovery().then((result) => {
       if (result.ok && !result.missing) setRecovery(result.json);
     });
   }, [api, demo, queryTheme]);
 
   useEffect(() => {
-    if (demo || recovery) return;
+    if (demo) return;
     const timer = window.setTimeout(() => {
+      setSaving(true);
       void api.writeRecovery(serializeDocument(histRef.current.present)).then((result) => {
-        if (result.ok) setAutosaveLabel('Automatisch gesichert');
+        setSaving(false);
+        if (result.ok) {
+          setRecoveryStamp(new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+        }
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [api, doc, demo, recovery]);
+  }, [api, doc, demo]);
 
   function live(next: WhiteboardDocument) {
     histRef.current = replacePresent(histRef.current, next);
@@ -202,9 +233,20 @@ function Workbench() {
 
   function finishEdit() {
     const before = editBefore.current;
+    const edited = editingRef.current;
     editBefore.current = null;
     setEditingId(null);
     editingRef.current = null;
+    if (edited && freshNotes.current.has(edited) && !notesWithText.current.has(edited)) {
+      const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === edited);
+      if (before && (!card || (card.type === 'text' && card.text.trim() === ''))) {
+        freshNotes.current.delete(edited);
+        histRef.current = replacePresent(histRef.current, before);
+        setHist(histRef.current);
+        setSyncToken((value) => value + 1);
+        return;
+      }
+    }
     if (before) {
       histRef.current = endGesture(histRef.current, before, histRef.current.present, sameContent);
       setHist(histRef.current);
@@ -273,10 +315,15 @@ function Workbench() {
     const created = getBoard(result.doc, boardRef.current)?.cards.at(-1);
     const settled = created ? settleCardDrop(result.doc, boardRef.current, created.id, point) : result;
     const next = settled.ok ? settled.doc : result.doc;
-    commit(next);
+    if (!editBefore.current) editBefore.current = structuredClone(histRef.current.present);
+    live(next);
     if (created) {
+      freshNotes.current.add(created.id);
       setFocusId(created.id);
-      beginEdit(created.id);
+      setEditingId(created.id);
+      editingRef.current = created.id;
+      setTool('select');
+      setSyncToken((value) => value + 1);
     }
   }
 
@@ -372,7 +419,7 @@ function Workbench() {
     if (result.canceled) return false;
     setFileName(result.fileName);
     setSavedSig(contentSignature(histRef.current.present));
-    setAutosaveLabel('Gespeichert');
+    setRecoveryStamp(null);
     await api.clearRecovery();
     return true;
   }
@@ -392,6 +439,8 @@ function Workbench() {
     setSavedSig(contentSignature(next));
     setEditingId(null);
     setFocusId(null);
+    setSelectedLine(null);
+    setLineDraft(null);
     setSyncToken((value) => value + 1);
     await api.clearPath();
     await api.clearRecovery();
@@ -406,12 +455,13 @@ function Workbench() {
       return;
     }
     if (opened.canceled) return;
-    loadJson(opened.json, opened.fileName, false);
+    const accepted = loadJson(opened.json, opened.fileName, false);
+    if (accepted) await api.confirmOpened();
     await api.clearRecovery();
     setFileOpen(false);
   }
 
-  function loadJson(json: string, name: string | null, keepDirty: boolean) {
+  function loadJson(json: string, name: string | null, keepDirty: boolean): boolean {
     let theme = histRef.current.present.theme;
     try {
       const raw = JSON.parse(json) as { version?: number };
@@ -422,7 +472,8 @@ function Workbench() {
     const validated = validateDocument(json);
     if (!validated.ok) {
       setBanner(validated.error);
-      return;
+      void api.rejectOpened();
+      return false;
     }
     const next = rawVersion(json) === 1 ? { ...validated.doc, theme } : validated.doc;
     setHist(createHistory(next));
@@ -431,8 +482,10 @@ function Workbench() {
     setSavedSig(keepDirty ? null : contentSignature(next));
     setEditingId(null);
     setFocusId(null);
+    setSelectedLine(null);
+    setLineDraft(null);
     setSyncToken((value) => value + 1);
-    document.documentElement.dataset.theme = next.theme;
+    return true;
   }
 
   const lookup = useMemo<CardLookup>(() => {
@@ -460,15 +513,23 @@ function Workbench() {
         return file ? { url: file.dataUrl, name: file.fileName } : undefined;
       },
       commitText: (id, text) => {
+        if (text.trim()) notesWithText.current.add(id);
         const result = updateText(histRef.current.present, boardRef.current, id, text);
         if (result.ok) live(result.doc);
       },
+      setTextHeight: (id, height) => {
+        const result = setTextCardHeight(histRef.current.present, boardRef.current, id, height);
+        if (result.ok) live(result.doc);
+      },
+      pendingTodoFocus: (cardId) => (todoFocus?.cardId === cardId ? todoFocus.itemId : null),
       commitTitle: (id, title) => {
         const result = renameBoard(histRef.current.present, id, title);
         if (result.ok) live(result.doc);
       },
       openBoard: (id) => {
         finishEdit();
+        setSelectedLine(null);
+        setLineDraft(null);
         setBoardId(id);
         setTool('select');
         setSyncToken((value) => value + 1);
@@ -505,11 +566,17 @@ function Workbench() {
       addTodoAfter: (cardId, itemId) => {
         finishEdit();
         const result = addTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
-        if (result.ok) commit(result.doc);
+        if (result.ok) {
+          commit(result.doc);
+          if (result.itemId) setTodoFocus({ cardId, itemId: result.itemId });
+        }
       },
       deleteTodoItem: (cardId, itemId) => {
         const result = deleteTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
-        if (result.ok) commit(result.doc);
+        if (result.ok) {
+          commit(result.doc);
+          if (result.focusId) setTodoFocus({ cardId, itemId: result.focusId });
+        }
       },
       startEdit: (id) => beginEdit(id),
       armGesture: () => {
@@ -521,24 +588,40 @@ function Workbench() {
         if (result.ok) live(result.doc);
       },
     };
-  }, [doc, boardId, editingId]);
+  }, [doc, boardId, editingId, todoFocus]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target;
-      const typing = target instanceof HTMLElement && target.dataset.role === 'card-editor';
+      const typing = isTypingTarget(target);
       if (event.key === 'Escape') {
         if (typing) return;
         setEditingId(null);
         editBefore.current = null;
         setTool('select');
         setLineDraft(null);
+        setSelectedLine(null);
         setMoreOpen(false);
         setFileOpen(false);
         return;
       }
       if (typing) return;
       const meta = event.ctrlKey || event.metaKey;
+      if (meta && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        setSelectedIds(current.cards.map((card) => card.id));
+        setSelectRevision((value) => value + 1);
+        return;
+      }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLine) {
+        event.preventDefault();
+        const result = deleteLines(histRef.current.present, current.id, [selectedLine]);
+        if (result.ok) {
+          commit(result.doc);
+          setSelectedLine(null);
+        }
+        return;
+      }
       if (meta && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault();
         undo();
@@ -611,7 +694,24 @@ function Workbench() {
                   aria-label="Titel dieses Boards"
                   value={headerDraft}
                   onChange={(event) => setHeaderDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      titleCancel.current = true;
+                      setHeaderDraft(current.title);
+                      event.currentTarget.blur();
+                    }
+                  }}
                   onBlur={() => {
+                    if (titleCancel.current) {
+                      titleCancel.current = false;
+                      setHeaderDraft(current.title);
+                      return;
+                    }
                     const result = renameBoard(histRef.current.present, current.id, headerDraft);
                     if (result.ok && !sameContent(result.doc, histRef.current.present)) commit(result.doc);
                   }}
@@ -631,11 +731,13 @@ function Workbench() {
           <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0 || editingId !== null} onClick={redo}>
             <IconRedo />
           </button>
-          <button type="button" data-testid="theme-toggle" aria-label={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'} onClick={() => {
-            const result = setTheme(histRef.current.present, doc.theme === 'dark' ? 'light' : 'dark');
-            if (result.ok) commit(result.doc);
-          }}>
-            {doc.theme === 'dark' ? 'Hell' : 'Dunkel'}
+          <button
+            type="button"
+            data-testid="theme-toggle"
+            aria-label={`Farbschema: ${themePref === 'system' ? 'Wie System' : themePref === 'dark' ? 'Dunkel' : 'Hell'}`}
+            onClick={() => setThemePref((currentPref) => (currentPref === 'light' ? 'dark' : currentPref === 'dark' ? 'system' : 'light'))}
+          >
+            {themePref === 'system' ? 'System' : themePref === 'dark' ? 'Dunkel' : 'Hell'}
           </button>
           <div className="menu">
             <button type="button" data-testid="file-menu" aria-expanded={fileOpen} onClick={() => { setFileOpen((open) => !open); setMoreOpen(false); }}>
@@ -650,7 +752,7 @@ function Workbench() {
               </div>
             ) : null}
           </div>
-          <span className="save-state">{dirty ? autosaveLabel || 'Ungespeichert' : 'Gespeichert'}</span>
+          <span className="save-state" data-testid="save-state">{saveStatus(dirty, saving, recoveryStamp)}</span>
         </div>
       </header>
       {banner ? (
@@ -692,21 +794,24 @@ function Workbench() {
           <ToolButton id="tool-line" label="Linie" pressed={tool === 'line'} onClick={() => { setTool('line'); setLineDraft(null); setMoreOpen(false); }}>
             <IconArrow />
           </ToolButton>
-          <ToolButton id="tool-more" label="Mehr" pressed={moreOpen || tool === 'subboard'} onClick={() => setMoreOpen((open) => !open)}>
+          <ToolButton id="tool-more" label="Mehr" pressed={moreOpen || tool === 'subboard'} buttonRef={moreButtonRef} onClick={() => setMoreOpen((open) => !open)}>
             <IconMore />
           </ToolButton>
-          {moreOpen ? (
-            <div className="more-pop" role="menu" data-testid="more-menu">
-              <button type="button" data-testid="more-board" onClick={() => { setTool('subboard'); setMoreOpen(false); }}>Unterboard</button>
-              <div className="sticker-row">
-                {(['star', 'heart', 'thumbs', 'smiley', 'arrow'] as StickerKind[]).map((kind) => (
-                  <button key={kind} type="button" draggable data-testid={`sticker-${kind}`} aria-label={kind} onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', `sticker:${kind}`)} onClick={() => addStickerAt(kind)}>
-                    {kind === 'star' ? '★' : kind === 'heart' ? '♥' : kind === 'thumbs' ? '👍' : kind === 'smiley' ? '☺' : '➜'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          {moreOpen
+            ? createPortal(
+                <div className="more-pop is-portal" role="menu" data-testid="more-menu" style={moreMenuStyle(moreButtonRef.current)}>
+                  <button type="button" data-testid="more-board" onClick={() => { setTool('subboard'); setMoreOpen(false); }}>Unterboard</button>
+                  <div className="sticker-row">
+                    {(['star', 'heart', 'thumbs', 'smiley', 'arrow'] as StickerKind[]).map((kind) => (
+                      <button key={kind} type="button" draggable data-testid={`sticker-${kind}`} aria-label={kind} onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', `sticker:${kind}`)} onClick={() => addStickerAt(kind)}>
+                        {kind === 'star' ? '★' : kind === 'heart' ? '♥' : kind === 'thumbs' ? '👍' : kind === 'smiley' ? '☺' : '➜'}
+                      </button>
+                    ))}
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
         </aside>
         <main className="stage">
           <BoardCanvas
@@ -796,15 +901,21 @@ function Workbench() {
             }}
             onEdit={beginEdit}
             onSelection={setSelectedIds}
+            selectRevision={selectRevision}
+            forcedSelection={selectedIds}
+            onPaneClear={() => setSelectedLine(null)}
             onDropTool={onDropTool}
             onLinePoint={placeLine}
             onSelectLine={setSelectedLine}
             onDrawLine={drawLine}
             onLayoutSync={() => setSyncToken((value) => value + 1)}
             lines={current.lines.flatMap((line) => {
-              const start = anchorPosition(line.source, current.cards);
-              const end = anchorPosition(line.target, current.cards);
-              if (!start || !end) return [];
+              const rawStart = anchorPosition(line.source, current.cards);
+              const rawEnd = anchorPosition(line.target, current.cards);
+              if (!rawStart || !rawEnd) return [];
+              const visible = visibleLineEnds(rawStart, rawEnd, line.source.kind, line.target.kind);
+              const start = visible.start;
+              const end = visible.end;
               return [{
                 id: line.id,
                 x1: start.x,
@@ -876,9 +987,30 @@ function Workbench() {
   );
 }
 
-function ToolButton({ id, label, pressed, onClick, children }: { id: string; label: string; pressed: boolean; onClick: () => void; children: ReactNode }) {
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return true;
+  return target.dataset.role === 'card-editor';
+}
+
+function saveStatus(dirty: boolean, saving: boolean, recoveryStamp: string | null): string {
+  if (saving) return 'Speichert …';
+  if (!dirty) return 'Alle Änderungen gespeichert';
+  if (recoveryStamp) return `Nicht in Datei gespeichert · Sicherung von ${recoveryStamp}`;
+  return 'Nicht in Datei gespeichert';
+}
+
+function moreMenuStyle(button: HTMLButtonElement | null): { left: number; top: number } {
+  const rect = button?.getBoundingClientRect();
+  const left = (rect?.right ?? 80) + 8;
+  const top = Math.max(8, Math.min((rect?.top ?? 80) - 80, window.innerHeight - 220));
+  return { left, top };
+}
+
+function ToolButton({ id, label, pressed, onClick, children, buttonRef }: { id: string; label: string; pressed: boolean; onClick: () => void; children: ReactNode; buttonRef?: RefObject<HTMLButtonElement | null> }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       data-testid={id}
       aria-label={label}

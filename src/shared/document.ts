@@ -195,7 +195,7 @@ function readBoard(value: unknown, ids: Set<string>): Board | null {
   }
   const cardIds = new Set(cards.map((card) => card.id));
   const lines = readLines(value.lines, value.connectors ?? [], cardIds, ids);
-  if (!lines) return null;
+  if (!lines || lines.length > MAX_CONNECTORS_PER_BOARD) return null;
   return {
     id,
     title,

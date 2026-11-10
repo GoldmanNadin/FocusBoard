@@ -5,6 +5,8 @@ export const Ipc = {
   confirmDiscard: 'dialog:confirm-discard',
   confirmDeleteBoards: 'dialog:confirm-delete-boards',
   clearPath: 'doc:clear-path',
+  confirmOpened: 'doc:confirm-opened',
+  rejectOpened: 'doc:reject-opened',
   dirty: 'doc:dirty',
   title: 'window:title',
   display: 'system:display',

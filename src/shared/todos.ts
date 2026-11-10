@@ -1,3 +1,4 @@
+import { afterCardChange } from './columns';
 import { MSG } from './limits';
 import type { Board, DocResult, TodoCard, TodoItem, WhiteboardDocument } from './model';
 
@@ -16,6 +17,15 @@ function todo(board: Board, cardId: string): TodoCard | undefined {
 
 function replaceTodo(board: Board, next: TodoCard): Board {
   return { ...board, cards: board.cards.map((card) => (card.id === next.id ? next : card)) };
+}
+
+export function todoHeight(count: number): number {
+  return Math.max(120, 64 + Math.max(1, count) * 36);
+}
+
+function storeTodo(doc: WhiteboardDocument, boardId: string, board: Board, card: TodoCard): DocResult {
+  const next = { ...card, height: todoHeight(card.items.length) };
+  return { ok: true, doc: afterCardChange(withBoard(doc, boardId, replaceTodo(board, next)), boardId, card.id) };
 }
 
 export function todoProgress(card: TodoCard): { done: number; total: number } {
@@ -51,11 +61,9 @@ export function addTodoItem(doc: WhiteboardDocument, boardId: string, cardId: st
   const item: TodoItem = { id: crypto.randomUUID(), text: '', done: false };
   const items = card.items.slice();
   const index = afterId ? items.findIndex((entry) => entry.id === afterId) : items.length - 1;
-  items.splice(index + 1, 0, item);
-  const height = Math.max(card.height, 88 + items.length * 36);
-  return { ok: true, doc: withBoard(doc, boardId, replaceTodo(board, { ...card, items, height })), itemId: item.id } as DocResult & {
-    itemId?: string;
-  };
+  items.splice(Math.max(0, index + 1), 0, item);
+  const stored = storeTodo(doc, boardId, board, { ...card, items });
+  return stored.ok ? { ...stored, itemId: item.id } : stored;
 }
 
 export function toggleTodoItem(doc: WhiteboardDocument, boardId: string, cardId: string, itemId: string): DocResult {
@@ -70,8 +78,15 @@ export function deleteTodoItem(doc: WhiteboardDocument, boardId: string, cardId:
   const board = getBoard(doc, boardId);
   const card = board && todo(board, cardId);
   if (!board || !card) return { ok: false, error: MSG.missingBoard };
-  return {
-    ok: true,
-    doc: withBoard(doc, boardId, replaceTodo(board, { ...card, items: card.items.filter((item) => item.id !== itemId) })),
-  };
+  if (card.items.length <= 1) {
+    const only = card.items[0];
+    if (!only) return { ok: true, doc };
+    const stored = storeTodo(doc, boardId, board, { ...card, items: [{ ...only, text: '' }] });
+    return stored.ok ? { ...stored, focusId: only.id } : stored;
+  }
+  const index = card.items.findIndex((item) => item.id === itemId);
+  const items = card.items.filter((item) => item.id !== itemId);
+  const focusId = items[Math.max(0, index - 1)]?.id;
+  const stored = storeTodo(doc, boardId, board, { ...card, items });
+  return stored.ok ? { ...stored, focusId } : stored;
 }

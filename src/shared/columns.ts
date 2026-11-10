@@ -17,6 +17,14 @@ function withBoard(doc: WhiteboardDocument, boardId: string, board: Board): Whit
   return { ...doc, boards: doc.boards.map((item) => (item.id === boardId ? board : item)) };
 }
 
+export function afterCardChange(doc: WhiteboardDocument, boardId: string, cardId: string): WhiteboardDocument {
+  const board = getBoard(doc, boardId);
+  if (!board) return doc;
+  const card = board.cards.find((item) => item.id === cardId);
+  if (!card || card.type === 'column' || !card.columnId) return doc;
+  return withBoard(doc, boardId, relayoutColumn(board, card.columnId));
+}
+
 export function relayoutColumn(board: Board, columnId: string): Board {
   const column = board.cards.find((card) => card.id === columnId);
   if (!isColumn(column)) return board;

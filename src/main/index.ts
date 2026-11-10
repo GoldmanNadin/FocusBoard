@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareDocumentForDisk } from '../shared/document';
-import { isSafeRecoveryPath, RECOVERY_FILE_NAME } from '../shared/recovery';
+import { writeAtomic } from '../shared/atomicWrite';
+import { isSafeRecoveryPath, RECOVERY_FILE_NAME, RECOVERY_PREVIOUS_NAME } from '../shared/recovery';
 import { deleteBoardsMessage } from '../shared/gestures';
 import { inspectImageBytes } from '../shared/images';
 import { Ipc } from '../shared/ipc';
@@ -27,6 +28,7 @@ function windowIconPath(): string {
 
 let mainWindow: BrowserWindow | null = null;
 let currentPath: string | null = null;
+let pendingOpenPath: string | null = null;
 let dirty = false;
 let allowClose = false;
 let closePromptOpen = false;
@@ -266,7 +268,7 @@ function registerIpc(): void {
       target = ensureJson(result.filePath);
     }
     try {
-      await fs.writeFile(target, prepared.json, 'utf8');
+      await writeAtomic(target, prepared.json);
     } catch {
       return { ok: false, error: MSG.saveFailed };
     }
@@ -277,13 +279,19 @@ function registerIpc(): void {
   ipcMain.handle(Ipc.open, async () => {
     const win = mainWindow;
     if (!win) return { ok: false, error: MSG.invalidDoc };
-    const result = await dialog.showOpenDialog(win, {
-      title: 'Whiteboard öffnen',
-      filters: [{ name: 'Whiteboard-Datei', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (result.canceled || result.filePaths.length === 0) return { ok: true, canceled: true };
-    const filePath = result.filePaths[0];
+    let filePath = '';
+    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_OPEN) {
+      filePath = process.env.WHITEBOARD_E2E_OPEN;
+    } else {
+      const result = await dialog.showOpenDialog(win, {
+        title: 'Whiteboard öffnen',
+        filters: [{ name: 'Whiteboard-Datei', extensions: ['json'] }],
+        properties: ['openFile'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return { ok: true, canceled: true };
+      filePath = result.filePaths[0] ?? '';
+    }
+    if (!filePath) return { ok: true, canceled: true };
     try {
       const stat = await fs.stat(filePath);
       if (!stat.isFile()) return { ok: false, error: MSG.invalidDoc };
@@ -291,7 +299,7 @@ function registerIpc(): void {
       const json = await fs.readFile(filePath, 'utf8');
       const prepared = prepareDocumentForDisk(json);
       if (!prepared.ok) return prepared;
-      currentPath = filePath;
+      pendingOpenPath = filePath;
       return { ok: true, canceled: false, fileName: path.basename(filePath), json: prepared.json };
     } catch {
       return { ok: false, error: MSG.invalidDoc };
@@ -368,6 +376,19 @@ function registerIpc(): void {
 
   ipcMain.handle(Ipc.clearPath, () => {
     currentPath = null;
+    pendingOpenPath = null;
+  });
+
+  ipcMain.handle(Ipc.confirmOpened, () => {
+    if (!pendingOpenPath) return { ok: false };
+    currentPath = pendingOpenPath;
+    pendingOpenPath = null;
+    return { ok: true };
+  });
+
+  ipcMain.handle(Ipc.rejectOpened, () => {
+    pendingOpenPath = null;
+    return { ok: true };
   });
 
   const recoveryPath = () => path.join(app.getPath('userData'), RECOVERY_FILE_NAME);
@@ -379,6 +400,8 @@ function registerIpc(): void {
       const json = await fs.readFile(target, 'utf8');
       const prepared = prepareDocumentForDisk(json);
       if (!prepared.ok) return { ok: true, missing: true };
+      const previous = path.join(path.dirname(target), RECOVERY_PREVIOUS_NAME);
+      await fs.copyFile(target, previous).catch(() => undefined);
       return { ok: true, missing: false, json: prepared.json };
     } catch {
       return { ok: true, missing: true };
@@ -391,10 +414,12 @@ function registerIpc(): void {
     if (!prepared.ok) return prepared;
     const target = recoveryPath();
     if (!isSafeRecoveryPath(target, app.getPath('userData'))) return { ok: false, error: 'recovery' };
-    const temporary = `${target}.tmp`;
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(temporary, prepared.json, 'utf8');
-    await fs.rename(temporary, target);
+    try {
+      await writeAtomic(target, prepared.json);
+    } catch {
+      return { ok: false, error: 'recovery' };
+    }
     return { ok: true };
   });
 

@@ -1,13 +1,13 @@
-# Testanleitung Version 0.4.0
+# Testanleitung Version 0.4.1
 
-Kurze Prüfung für PC und Laptop, mit Maus und Tastatur. Die Fläche ist weiß oder schwarz, ohne Raster. Nur die Karten sind farbig. Es gibt keine Animationen. Die Bedienung aus 0.3 ist unverändert. Neu ist nur der Name FocusBoard und das Logo.
+Kurze Prüfung für PC und Laptop, mit Maus und Tastatur. Die Fläche ist weiß oder schwarz, ohne Raster. Nur die Karten sind farbig. Es gibt keine Animationen. FocusBoard und das Logo bleiben wie in 0.4.0. Diese Fassung behebt die bestätigten Fehler, ohne neue Werkzeuge.
 
-Die Datei `FocusBoard-Setup-0.4.0.exe` ist nicht signiert. Windows kann warnen: Weitere Informationen, dann Trotzdem ausführen. Es wurde kein Zertifikat gekauft. Installiert wird `FocusBoard.exe`. Startmenü, Desktop-Verknüpfung und der Eintrag zum Entfernen heißen FocusBoard. Eine vorhandene Installation von 0.3 wird ersetzt, nicht doppelt angelegt. Die automatische Sicherung bleibt im Datenordner `Digitales Whiteboard`.
+Die Datei `FocusBoard-Setup-0.4.1.exe` ist nicht signiert. Windows kann warnen: Weitere Informationen, dann Trotzdem ausführen. Es wurde kein Zertifikat gekauft. Installiert wird `FocusBoard.exe`. Startmenü, Desktop-Verknüpfung und der Eintrag zum Entfernen heißen FocusBoard. Eine vorhandene Installation wird ersetzt, nicht doppelt angelegt. Die automatische Sicherung bleibt im Datenordner `Digitales Whiteboard`.
 
 ## Name und Zeichen
 
 1. Oben links steht das Brett-Zeichen und der Name FocusBoard. Im hellen Thema ist das Zeichen dunkel, im dunklen hell. Ein Klick darauf springt zum Hauptboard.
-2. Die Fenstertitelzeile nennt FocusBoard. Hilfe, Über FocusBoard zeigt den Namen, die Version 0.4.0 und die MIT-Lizenz.
+2. Die Fenstertitelzeile nennt FocusBoard. Hilfe, Über FocusBoard zeigt den Namen, die Version 0.4.1 und die MIT-Lizenz.
 3. Das Programm- und Installer-Symbol ist das Brett ohne das Wort FocusBoard. Unter Linux wurde geprüft, dass die Größen 16, 24, 32, 48, 64, 128 und 256 im Symbol stecken und die EXE sie einbettet. Ob Windows den Symbol-Cache sofort aktualisiert, ist hier nicht geprüft.
 
 Diese Fassung wurde unter Linux gebaut. Nicht auf Windows-Hardware geprüft: echte Maus, Touchpad, SmartScreen, Installation auf dem PC, Startmenü, Desktop-Verknüpfung, Monitorwechsel bei laufender App, Windows-Skalierung 100 %, 150 % und 200 %.
@@ -54,6 +54,19 @@ Rückgängig und Wiederholen, oder Strg+Z und Strg+Y, gelten für die neuen Schr
 Datei, Speichern schreibt die gewählte JSON-Datei weiter im Format Version 3. Zusätzlich sichert die App eine Kopie nur in ihrem Datenordner `Digitales Whiteboard`. Diese Kopie überschreibt die gewählte Datei nicht. Nach einem Abbruch: Wiederherstellen oder Verwerfen.
 
 Eine Datei aus Version 0.2 öffnen. Die Notizen bleiben. Alte Pfeile werden zu Linien. Eine Datei aus Version 0.1 öffnet die Textkarten als gelbe Notizen.
+
+## Stand 0.4.1
+
+1. Den Hinweis „Wiederherstellen“ stehen lassen und weiterarbeiten. Die Sicherung läuft trotzdem weiter, höchstens eine halbe Sekunde hinter der letzten Änderung. Die vorherige Sicherung bleibt daneben liegen.
+2. „Mehr“ bei kleinem Fenster und bei 150 % Skalierung: Unterboard und Sticker sind vollständig sichtbar und klickbar.
+3. In einer Liste Enter: der Cursor springt in die neue Zeile. Die letzte Zeile verschwindet nicht durch Rücktaste, sie wird nur leer. Darunter steht „+ Eintrag“.
+4. Eine Liste in einer Spalte wächst, die Karte darunter rutscht mit und liegt nicht darüber.
+5. Eine Linie anklicken, dann daneben klicken, Escape oder das Board wechseln: die Leiste verschwindet. Entf löscht die markierte Linie. Die Pfeilspitze endet kurz vor der Kartenkante und liegt nicht unter der Karte.
+6. Strg+A markiert die Karten, nicht die Beschriftung der Oberfläche.
+7. Enter im Board-Titel übernimmt den Titel. Escape stellt den alten Titel wieder her.
+8. Eine neue Notiz ohne Text verschwindet beim Verlassen. Der Hinweis „Hier tippen …“ erscheint nur während der Eingabe. Dreißig Zeilen lassen die Karte mitwachsen, ohne Scrollbalken.
+9. Hell, Dunkel oder System ist eine Einstellung der App. Rückgängig ändert das Thema nicht, und die Datei wird davon nicht ungespeichert. Die Anzeige sagt „Alle Änderungen gespeichert“, „Nicht in Datei gespeichert · Sicherung von …“ oder „Speichert …“.
+10. Speichern schreibt erst in eine temporäre Datei und benennt sie danach um. Die vorige Fassung bleibt als `.bak`. Schlägt das Schreiben fehl, bleibt die alte Datei heil. Eine Datei, die sich nicht öffnen lässt, wird nicht zur Speicherzieldatei.
 
 ## Nicht enthalten
 

@@ -1,6 +1,6 @@
 {
   "name": "digitales-whiteboard",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "FocusBoard, persönliche Kartenfläche als lokaler Desktop-Prototyp.",
   "author": "FocusBoard",
@@ -28,6 +28,7 @@
     "electron": "^39.0.0",
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.1",
+    "fast-check": "^4.10.2",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "^4.0.6"

@@ -2,27 +2,40 @@
 
 FocusBoard ist ein verspieltes, kartenbasiertes Whiteboard für Windows, in der Art von Milanote. Notizen, Bilder, Linien, Spalten, Aufgaben und verschachtelte Boards liegen auf einer freien Fläche. Die App ist ein lokaler Desktop-Prototyp (Electron): alles steht in einer JSON-Datei auf dem eigenen Rechner. Es gibt kein Konto, keinen Abgleich und keinen Stift.
 
-Der sichtbare Name ist FocusBoard. Die Installationskennung und der Datenordner der Version 0.3 bleiben, damit ein Update die vorhandene Sicherung nicht verlegt.
+Diese Fassung ist **0.4.1 „Stabil“**, eine Fehlerbehebung ohne neue Werkzeuge. Der sichtbare Name ist FocusBoard. Die Installationskennung und der Datenordner der Version 0.3 bleiben, damit ein Update die vorhandene Sicherung nicht verlegt.
 
 Der Prototyp ist **nicht signiert**. Windows SmartScreen kann beim Start warnen.
 
 ## Funktionen
 
-- Notizen in Gelb, Rosa, Türkis, Grün und Orange, dazu zwei Überschriften
+- Notizen in Gelb, Rosa, Türkis, Grün und Orange, dazu zwei Überschriften. Notizen wachsen mit dem Text mit.
 - Bildkarten, Spalten, die Karten tragen, Aufgaben mit Haken, Linien und fünf Sticker
 - Unterboards, die über den Pfad oben geöffnet werden
 - Werkzeuge lassen sich auf die Fläche ziehen; Linien docken an Karten an oder liegen frei
 - Rückgängig und Wiederholen, Zoom (50 %, 100 %, 200 %, Alles) und eine weiße oder schwarze Fläche ohne Raster
-- Mausrad verschiebt senkrecht, Umschalt seitlich, Strg zoomt am Zeiger; zwei Finger verschieben beide Achsen, die Pinzetten-Geste zoomt
+- Hell, Dunkel oder System ist eine Einstellung der App und gehört nicht zur Datei
+- Mausrad verschiebt senkrecht, Umschalt seitlich, Strg zoomt am Zeiger; zwei Finger verschieben beide Achsen, die Pinzetten-Geste zoomt. Strg+A markiert die Karten.
 - Dateien der Version 0.1 und 0.2 lassen sich öffnen und werden als Version 3 gelesen
-- Zusätzliche Sicherung nur im eigenen Datenordner; die gewählte Datei wird nicht automatisch überschrieben
+- Zusätzliche Sicherung nur im eigenen Datenordner; die gewählte Datei wird nicht automatisch überschrieben. Speichern schreibt atomar und behält die vorige Fassung als `.bak`.
 - Bedienung auf Deutsch. Die Kennzeichnung „React Flow“ bleibt sichtbar, weil die Fläche mit dieser Bibliothek gebaut ist
 - Kartentext in der mitgelieferten Schrift Patrick Hand (SIL Open Font License, siehe `src/renderer/src/fonts/OFL.txt`)
 - Keine Animationen
 
-## Oberfläche (0.4)
+## Version 0.4.1 (Stabil)
 
-Links: Auswahl, Notiz, zwei Überschriften, Bild, Spalte, Aufgaben, Linie und Mehr. Unter Mehr: Unterboard und fünf Sticker. Oben Pfad, Rückgängig, Wiederholen und Datei. Unten rechts Zoom, 50 %, 100 %, 200 % und Alles.
+- Die automatische Sicherung läuft weiter, während der Hinweis zum Wiederherstellen offen ist.
+- Das Menü „Mehr“ bleibt auch bei kleinem Fenster und bei 150 % Skalierung vollständig sichtbar und klickbar.
+- Enter in einer Aufgabenliste setzt den Cursor in die neue Zeile. Rücktaste leert die letzte Zeile, statt sie zu entfernen.
+- Notizen wachsen mit dem Text mit, ohne Scrollbalken.
+- Karten in einer Spalte stapeln sich neu, wenn eine Karte darüber wächst.
+- Strg+A markiert die Karten, nicht die Beschriftung der Oberfläche.
+- Die Linienleiste schließt sich beim Wegklicken, mit Escape oder beim Boardwechsel.
+- Speichern schreibt erst in eine temporäre Datei und benennt sie danach um. Die vorige Fassung bleibt als `.bak`.
+- Hell, Dunkel oder System ist eine Einstellung der App. Rückgängig ändert das Thema nicht.
+
+## Oberfläche (0.4.1)
+
+Links: Auswahl, Notiz, zwei Überschriften, Bild, Spalte, Aufgaben, Linie und Mehr. Unter Mehr: Unterboard und fünf Sticker. Oben Pfad, Rückgängig, Wiederholen und Datei. Unten rechts Zoom, 50 %, 100 %, 200 % und Alles. Die Fläche ist rein weiß oder rein schwarz, ohne Raster. Notizen: Gelb, Rosa, Türkis, Grün, Orange.
 
 ## Technik
 
@@ -95,7 +108,7 @@ Das Skript setzt `CSC_IDENTITY_AUTO_DISCOVERY=false`, damit electron-builder kei
 Der Installer liegt danach unter:
 
 ```text
-release/FocusBoard-Setup-0.4.0.exe
+release/FocusBoard-Setup-0.4.1.exe
 ```
 
 ## Dateiformat
@@ -104,6 +117,8 @@ Eine Datei, `format` ist `digitales-whiteboard`. Neue Dateien haben `version` `3
 Version 1 und 2 werden beim Öffnen angenommen. Darin stehen alle Boards, Karten, Linien, Spalten, Aufgaben, Ansicht und die Bilder als Data-URL.
 Die Datei ist zwischen PC und Laptop kopierbar. Sie kann durch die Bilder groß werden
 (höchstens 8 MB je Bild, höchstens 40 MB für die ganze Datei).
+
+Speichern schreibt atomar: erst in eine temporäre Datei, dann umbenennen. Die vorige Fassung bleibt als `.bak`. Schlägt das Schreiben fehl, bleibt die alte Datei heil.
 
 ## Bewusst nicht in dieser Fassung
 

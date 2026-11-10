@@ -38,6 +38,7 @@ import type {
   WhiteboardDocument,
 } from './model';
 import { APP_VERSION, FORMAT, FORMAT_VERSION } from './limits';
+import { afterCardChange } from './columns';
 import { lineUsesCard } from './lines';
 import { normalizeStoredText, normalizeTitle } from './text';
 import type { CanvasLine, ColumnCard, TodoCard } from './model';
@@ -147,6 +148,7 @@ function usedIds(doc: WhiteboardDocument): Set<string> {
     ids.add(board.id);
     for (const card of board.cards) ids.add(card.id);
     for (const connector of board.connectors) ids.add(connector.id);
+    for (const line of board.lines ?? []) ids.add(line.id);
   }
   for (const file of doc.files) ids.add(file.id);
   return ids;
@@ -557,6 +559,18 @@ export function deleteConnectors(doc: WhiteboardDocument, boardId: string, conne
   return { ok: true, doc: withBoard(doc, boardId, { ...board, connectors, lines }) };
 }
 
+export function setTextCardHeight(doc: WhiteboardDocument, boardId: string, cardId: string, height: number): DocResult {
+  const board = getBoard(doc, boardId);
+  const card = board?.cards.find((item) => item.id === cardId);
+  if (!board || card?.type !== 'text') return fail(MSG.missingBoard);
+  const nextHeight = Math.round(height);
+  const geometry = geometryError(card.x, card.y, card.width, nextHeight, 'text');
+  if (geometry) return fail(geometry);
+  if (card.height === nextHeight) return { ok: true, doc };
+  const cards = board.cards.map((item) => (item.id === cardId ? { ...card, height: nextHeight } : item));
+  return { ok: true, doc: afterCardChange(withBoard(doc, boardId, { ...board, cards }), boardId, cardId) };
+}
+
 export function addColumn(
   doc: WhiteboardDocument,
   boardId: string,
@@ -565,7 +579,10 @@ export function addColumn(
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return fail(MSG.missingBoard);
+  if (board.cards.length >= MAX_CARDS_PER_BOARD) return fail(MSG.tooManyCards);
   const size = defaultSizeFor('column');
+  const geometry = geometryError(position.x, position.y, size.width, size.height, 'column');
+  if (geometry) return fail(geometry);
   const cardId = takeId(ids?.cardId, usedIds(doc));
   if (!cardId) return fail(MSG.duplicateId);
   const card: ColumnCard = {
@@ -590,7 +607,10 @@ export function addTodoCard(
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return fail(MSG.missingBoard);
+  if (board.cards.length >= MAX_CARDS_PER_BOARD) return fail(MSG.tooManyCards);
   const size = defaultSizeFor('todo');
+  const geometry = geometryError(position.x, position.y, size.width, size.height, 'todo');
+  if (geometry) return fail(geometry);
   const cardId = takeId(ids?.cardId, usedIds(doc));
   if (!cardId) return fail(MSG.duplicateId);
   const card: TodoCard = {

@@ -115,4 +115,6 @@ export type WhiteboardDocument = {
   files: ImageFile[];
 };
 
-export type DocResult = { ok: true; doc: WhiteboardDocument } | { ok: false; error: string };
+export type DocResult =
+  | { ok: true; doc: WhiteboardDocument; itemId?: string; focusId?: string }
+  | { ok: false; error: string };

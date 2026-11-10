@@ -1,4 +1,4 @@
-import { MSG } from './limits';
+import { COORD_LIMIT, MAX_CONNECTORS_PER_BOARD, MSG } from './limits';
 import type { Board, CanvasLine, Card, DocResult, HandleSide, LineAnchor, LineColor, WhiteboardDocument } from './model';
 import { isColumn } from './columns';
 
@@ -15,6 +15,26 @@ function clamp01(value: number): number {
 
 function withBoard(doc: WhiteboardDocument, boardId: string, board: Board): WhiteboardDocument {
   return { ...doc, boards: doc.boards.map((item) => (item.id === boardId ? board : item)) };
+}
+
+export const LINE_END_GAP = 6;
+
+export function visibleLineEnds(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  sourceKind: LineAnchor['kind'],
+  targetKind: LineAnchor['kind'],
+): { start: { x: number; y: number }; end: { x: number; y: number } } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length < LINE_END_GAP * 2 + 1) return { start, end };
+  const ux = dx / length;
+  const uy = dy / length;
+  return {
+    start: sourceKind === 'card' ? { x: start.x + ux * LINE_END_GAP, y: start.y + uy * LINE_END_GAP } : start,
+    end: targetKind === 'card' ? { x: end.x - ux * LINE_END_GAP, y: end.y - uy * LINE_END_GAP } : end,
+  };
 }
 
 export function anchorPosition(anchor: LineAnchor, cards: Card[]): { x: number; y: number } | null {
@@ -72,6 +92,12 @@ export function addCanvasLine(
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return { ok: false, error: MSG.missingBoard };
+  if (board.lines.length >= MAX_CONNECTORS_PER_BOARD) return { ok: false, error: MSG.tooManyConnectors };
+  for (const anchor of [source, target]) {
+    if (anchor.kind === 'point' && (Math.abs(anchor.x) > COORD_LIMIT || Math.abs(anchor.y) > COORD_LIMIT)) {
+      return { ok: false, error: MSG.badLine };
+    }
+  }
   if (!anchorPosition(source, board.cards) || !anchorPosition(target, board.cards)) {
     return { ok: false, error: MSG.badLine };
   }

@@ -38,6 +38,12 @@ const api = {
   clearPath(): Promise<void> {
     return ipcRenderer.invoke(Ipc.clearPath);
   },
+  confirmOpened(): Promise<{ ok: boolean }> {
+    return ipcRenderer.invoke(Ipc.confirmOpened);
+  },
+  rejectOpened(): Promise<{ ok: boolean }> {
+    return ipcRenderer.invoke(Ipc.rejectOpened);
+  },
   setDirty(dirty: boolean): void {
     ipcRenderer.send(Ipc.dirty, dirty === true);
   },
