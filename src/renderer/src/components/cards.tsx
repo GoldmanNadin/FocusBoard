@@ -629,6 +629,8 @@ export function SketchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
   const card = lookup.sketch(id);
   const articleRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<number[] | null>(null);
+  // Points are collected in a ref: pens report many events per frame, faster than React state updates.
+  const draftRef = useRef<number[] | null>(null);
   const [tool, setTool] = useState(pen);
   useEffect(() => {
     if (!data.editing) return;
@@ -671,16 +673,27 @@ export function SketchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
           if (!data.editing || event.button !== 0) return;
           event.preventDefault();
           event.stopPropagation();
-          event.currentTarget.setPointerCapture(event.pointerId);
-          setDraft(toPoint(event));
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            // The pointer may already be gone (e.g. a very short pen tap); drawing still works without capture.
+          }
+          draftRef.current = toPoint(event);
+          setDraft(draftRef.current);
         }}
         onPointerMove={(event) => {
-          if (!draft) return;
-          setDraft([...draft, ...toPoint(event)]);
+          if (!draftRef.current) return;
+          draftRef.current = [...draftRef.current, ...toPoint(event)];
+          setDraft(draftRef.current);
         }}
         onPointerUp={() => {
-          if (!draft) return;
-          lookup.addStroke(id, { color: tool.color, width: tool.width, points: draft });
+          const points = draftRef.current;
+          draftRef.current = null;
+          setDraft(null);
+          if (points) lookup.addStroke(id, { color: tool.color, width: tool.width, points });
+        }}
+        onPointerCancel={() => {
+          draftRef.current = null;
           setDraft(null);
         }}
       >

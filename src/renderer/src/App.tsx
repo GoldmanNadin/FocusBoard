@@ -75,6 +75,8 @@ import {
 
 type Tool = 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'draw';
 
+type TrashMarker = { id: string | null; inFlight: boolean; inTrash: boolean; clip: string; title: string; count: number; pastLength: number };
+
 type ContextTarget = { kind: 'card'; id: string } | { kind: 'pane' };
 type ContextMenuState = { target: ContextTarget; ids: string[]; screen: { x: number; y: number }; point: { x: number; y: number } };
 type LinkPrompt = { screen: { x: number; y: number }; point: { x: number; y: number }; editId: string | null; value: string; error: string | null };
@@ -133,7 +135,7 @@ function Workbench() {
   const [centerRequest, setCenterRequest] = useState({ token: 0, x: 0, y: 0 });
   const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
   /** The last deletion's trash entry, so undo can take it out of the trash again (and redo put it back). */
-  const lastTrash = useRef<{ id: string | null; clip: string; title: string; count: number; pastLength: number } | null>(null);
+  const lastTrash = useRef<TrashMarker | null>(null);
   const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const attachInput = useRef<HTMLInputElement>(null);
@@ -256,9 +258,13 @@ function Workbench() {
     setToast(null);
     // Undoing the deletion brings the cards back, so they must not stay in the trash as well.
     const trashed = lastTrash.current;
-    if (trashed?.id && histRef.current.past.length === trashed.pastLength) {
-      void api.trashDelete(trashed.id);
-      trashed.id = null;
+    if (trashed?.inTrash && histRef.current.past.length === trashed.pastLength) {
+      trashed.inTrash = false;
+      // If the trash has not confirmed yet, the entry is removed as soon as it does (see sendToTrash).
+      if (trashed.id && !trashed.inFlight) {
+        void api.trashDelete(trashed.id);
+        trashed.id = null;
+      }
     }
     const next = undoHistory(histRef.current);
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
@@ -271,10 +277,9 @@ function Workbench() {
   function redo() {
     if (editingRef.current) return;
     const trashed = lastTrash.current;
-    if (trashed && !trashed.id && histRef.current.past.length === trashed.pastLength - 1 && histRef.current.future.length > 0) {
-      void api.trashAdd({ title: trashed.title, count: trashed.count, clip: trashed.clip }).then((id) => {
-        trashed.id = id;
-      });
+    if (trashed && !trashed.inTrash && histRef.current.past.length === trashed.pastLength - 1 && histRef.current.future.length > 0) {
+      trashed.inTrash = true;
+      if (!trashed.inFlight && !trashed.id) sendToTrash(trashed);
     }
     const next = redoHistory(histRef.current);
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
@@ -516,13 +521,10 @@ function Workbench() {
     }
     // Keep a copy in the app's trash so it can come back even after the program was closed.
     const clip = copyCards(histRef.current.present, board.id, present);
-    let entry: { id: string | null; clip: string; title: string; count: number; pastLength: number } | null = null;
+    let entry: TrashMarker | null = null;
     if (clip) {
-      entry = { id: null, clip: JSON.stringify(clip), title: trashTitle(clip, (id) => getBoard(histRef.current.present, id)?.title ?? ''), count: present.length, pastLength: 0 };
-      const pending = entry;
-      void api.trashAdd({ title: pending.title, count: pending.count, clip: pending.clip }).then((id) => {
-        pending.id = id;
-      });
+      entry = { id: null, inFlight: true, inTrash: true, clip: JSON.stringify(clip), title: trashTitle(clip, (id) => getBoard(histRef.current.present, id)?.title ?? ''), count: present.length, pastLength: 0 };
+      sendToTrash(entry);
     }
     commit(result.doc);
     if (entry) {
@@ -742,6 +744,19 @@ function Workbench() {
     }
     loadJson(json, null, true);
     showToast(`„${file.name}“ geladen – mit „Speichern unter“ sichern`);
+  }
+
+  /** Stores a deletion in the trash; reconciles with undo/redo that happened while the trash was still writing. */
+  function sendToTrash(marker: TrashMarker) {
+    marker.inFlight = true;
+    void api.trashAdd({ title: marker.title, count: marker.count, clip: marker.clip }).then((id) => {
+      marker.inFlight = false;
+      marker.id = id;
+      if (!marker.inTrash && id) {
+        void api.trashDelete(id);
+        marker.id = null;
+      }
+    });
   }
 
   function openTrash() {

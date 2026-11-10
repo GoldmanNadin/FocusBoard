@@ -15,6 +15,10 @@ import { APP_VERSION, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MSG } from '../shared
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.setName(PRODUCT_NAME);
+// Test hook only: lets the e2e suite run at Windows-like display scaling (e.g. 1.5 = 150 %).
+if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_SCALE && /^[12](\.\d+)?$/.test(process.env.WHITEBOARD_SCALE)) {
+  app.commandLine.appendSwitch('force-device-scale-factor', process.env.WHITEBOARD_SCALE);
+}
 if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_USER_DATA) {
   app.setPath('userData', process.env.WHITEBOARD_USER_DATA);
 } else {

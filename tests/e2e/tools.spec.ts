@@ -574,6 +574,7 @@ test('comments and tables from the More menu', async () => {
   const { app, page } = await launch();
   await page.getByTestId('tool-more').click();
   await page.getByTestId('more-comment').click();
+  await expect(page.getByTestId('card-editor')).toBeFocused();
   await page.keyboard.type('Bitte nachfragen');
   await page.keyboard.press('Escape');
   await expect(page.locator('.text-comment .card-copy')).toHaveText('Bitte nachfragen');
@@ -668,6 +669,20 @@ test('deleted cards go to the trash and can be restored after a restart', async 
   await page.getByTestId('trash-restore').click();
   await expect(page.locator('.text-note', { hasText: 'Wichtige Idee' })).toBeVisible();
   await expect(page.getByTestId('trash-entry')).toHaveCount(0);
+  await expect(page.locator('.search-empty')).toHaveText('Der Papierkorb ist leer.');
+  await app.close();
+});
+
+test('undo right after deleting (before the trash has answered) still empties the trash', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Ganz schnell');
+  await page.locator('.react-flow__node:has(.text-note)').click();
+  await page.keyboard.press('Delete');
+  await page.keyboard.press('Control+Z');
+  await expect(page.locator('.text-note')).toHaveCount(1);
+  await page.waitForTimeout(300);
+  await page.getByTestId('file-menu').click();
+  await page.getByTestId('open-trash').click();
   await expect(page.locator('.search-empty')).toHaveText('Der Papierkorb ist leer.');
   await app.close();
 });
@@ -836,5 +851,36 @@ test('the undo button works while writing: it ends editing and takes the typing 
   await expect(page.locator('.text-note .card-copy')).toHaveText('Bleibt');
   await page.getByTestId('redo').click();
   await expect(page.locator('.text-note .card-copy')).toHaveText('Bleibt und weg');
+  await app.close();
+});
+
+test('drawing works with a pen (pointerType pen), not only with the mouse', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.keyboard.press('p');
+  await page.mouse.click(b.x + 300, b.y + 200);
+  await expect(page.getByTestId('sketch-done')).toBeVisible();
+  await page.getByTestId('sketch-surface').evaluate((svg) => {
+    const rect = svg.getBoundingClientRect();
+    const fire = (type: string, x: number, y: number) =>
+      svg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pressure: 0.6, clientX: rect.left + x, clientY: rect.top + y }));
+    fire('pointerdown', 20, 20);
+    for (let i = 1; i <= 10; i += 1) fire('pointermove', 20 + i * 15, 20 + i * 10);
+    fire('pointerup', 170, 120);
+  });
+  await expect(page.locator('.card-sketch')).toHaveAttribute('data-strokes', '1');
+  await app.close();
+});
+
+test('keys typed in the instant after creating a card are not lost and do not trigger tools', async () => {
+  const { app, page } = await launch();
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('more-comment').click();
+  // No waiting at all: the first letters arrive before the editor exists.
+  await page.keyboard.type('Bbbb', { delay: 0 });
+  await expect(page.getByTestId('card-editor')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.text-comment .card-copy')).toHaveText('Bbbb');
+  await expect(page.getByTestId('tool-board')).toHaveAttribute('aria-pressed', 'false');
   await app.close();
 });

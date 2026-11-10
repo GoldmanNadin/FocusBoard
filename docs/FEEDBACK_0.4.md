@@ -71,6 +71,60 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Zehnter Schritt: Skalierung, Stift, Milanote-Vergleich, Heuristik-Prüfung
+
+**Skalierung:** Die komplette Oberflächen-Testsuite (47 Tests) läuft zusätzlich mit erzwungener Bildschirmskalierung 150 % und 200 % (`WHITEBOARD_SCALE=1.5` bzw. `2`, nur im Testmodus wirksam; geprüft: `devicePixelRatio` = 1,5). Ergebnis: alle grün. Chromium skaliert hier genauso wie unter Windows. Nicht abgedeckt ist nur das Verhalten beim Verschieben des Fensters zwischen Monitoren mit unterschiedlicher Skalierung.
+
+**Stift:** Zeichnen wurde mit echten Stift-Ereignissen (`pointerType: "pen"`, Druck, schnelle Folge) geprüft. Dabei fielen zwei echte Schwächen auf und wurden behoben: Ein Fehler bei `setPointerCapture` brach den ganzen Strich ab, und sehr schnell aufeinanderfolgende Stift-Ereignisse gingen verloren, weil die Punkte über React-Zustand gesammelt wurden. Sie liegen jetzt in einer Referenz. Ein abgebrochener Stift (`pointercancel`) verwirft den halben Strich sauber.
+
+#### Vergleich mit Milanote (Stand dieses Branches)
+
+| Milanote-Funktion | FocusBoard | Anmerkung |
+|---|---|---|
+| Notizen mit Formatierung | ✅ | Markdown-Teilmenge, Strg+B/I, wortweises Rückgängig |
+| Überschriften / Text | ✅ | Titel, Untertitel, zwei Schriften |
+| Bilder (Ziehen, Einfügen) | ✅ | Seitenverhältnis bleibt; keine Bildunterschrift |
+| Links mit Vorschau | ◐ | Link-Karte mit Host und Titel, **ohne** Vorschaubild (bewusst: keine Netzwerkzugriffe) |
+| Datei-Anhänge | ✅ | Positivliste harmloser Typen, max. 10 MB |
+| To-do-Listen | ✅ | Enter/↑/↓, Fortschritt; kein Fälligkeitsdatum |
+| Spalten | ✅ | Einsortieren, Zuklappen, Breite |
+| Unterboards | ✅ | Doppelklick öffnet, Pfad oben, Kopieren mit Inhalt |
+| Linien/Pfeile | ✅ | Andocken, Farbe, Pfeil, Enden ziehen, biegen; keine Beschriftung auf der Linie |
+| Zeichnen / Skizze | ✅ | Maus, Stift, Finger; 8 Farben, 2 Stärken |
+| Farbfeld | ✅ | HEX kopierbar |
+| Kommentare | ◐ | Kommentar-Karte; **keine** Kommentar-Threads mit Personen (lokale Einzelplatz-App) |
+| Tabellen | ✅ | bis 40 × 10 |
+| Formen | ✅ | Rechteck, Kreis, Raute |
+| Vorlagen | ✅ | Kanban, Wochenplan, Moodboard (Milanote hat deutlich mehr) |
+| Suche | ✅ | über alle Boards, ohne Umlaut-/Groß-Klein-Probleme |
+| Hilfslinien / Ausrichten | ✅ | Kanten und Mitten, Alt = frei |
+| Kopieren / Duplizieren / Rechtsklick | ✅ | |
+| Export | ✅ | PNG und PDF (eine Seite) |
+| Papierkorb | ✅ | 30 Tage, lokal |
+| Automatisch speichern | ✅ | sobald eine Datei existiert |
+| Zusammenarbeit in Echtzeit, Teilen per Link, Cloud-Sync | ❌ | Nicht Ziel dieses lokalen Prototyps (siehe D5) |
+| Mobile App, Web-Clipper | ❌ | Nicht Ziel |
+| Dark Mode | ✅ | weicher als vorher |
+
+#### Prüfung nach Nielsens 10 Usability-Heuristiken
+
+| Heuristik | Bewertung | Belege / Rest |
+|---|---|---|
+| 1 Sichtbarkeit des Systemstatus | gut | Speicheranzeige mit Uhrzeit, Hinweis-Toasts, Hilfslinien beim Ziehen, Auswahlrahmen |
+| 2 Übereinstimmung mit der realen Welt | gut | Deutsche Begriffe, Notiz-/Stift-Metaphern; „Unterboard“ ist Fachsprache, „Board“ als Werkzeugname mildert das |
+| 3 Kontrolle und Freiheit | gut | Rückgängig/Wiederholen überall (auch beim Schreiben), Papierkorb, Escape bricht ab, leere Karten verschwinden |
+| 4 Konsistenz und Standards | gut | Strg+C/V/D/A/Z/Y/F/S wie in Office; Rechtsklick-Menü; Doppelklick öffnet/bearbeitet einheitlich |
+| 5 Fehlervermeidung | gut | Bestätigung beim Löschen von Unterboards, Prüfung aller Dateien, gefährliche Anhänge abgelehnt, Linien können nicht an sich selbst hängen |
+| 6 Wiedererkennen statt Erinnern | gut | Beschriftete Werkzeuge, Tastenkürzel im Tooltip und im Rechtsklick-Menü, „Zuletzt geöffnet“ |
+| 7 Flexibilität und Effizienz | gut | Ein-Tasten-Kürzel, Ziehen aus der Leiste, Einfügen aus der Zwischenablage, Vorlagen; **fehlt:** Befehlspalette (Strg+K) und eine Kürzel-Übersicht (F1) |
+| 8 Ästhetik und Minimalismus | mittel–gut | Ruhiger, beschrifteter Auftritt; die obere Leiste ist mit 6 Text-Knöpfen voll, „Mehr“ enthält viel |
+| 9 Fehler erkennen und beheben | gut | Klare deutsche Fehlermeldungen mit Ursache (z. B. erlaubte Dateitypen) |
+| 10 Hilfe und Dokumentation | mittel | Hinweis auf leeren Boards; **fehlt:** Kürzel-Übersicht und kurze Einführung beim ersten Start |
+
+**Empfehlung für die nächste Runde:** Befehlspalette (Strg+K) mit Kürzel-Übersicht, eine Einführung beim ersten Start und eine aufgeräumte obere Leiste (Suchen, Schrift, Thema in ein Einstellungs-Menü).
+
+**Stabilität der Tests:** Unter Last fielen zwei seltene Zeitprobleme auf und wurden in der App behoben. Erstens: Strg+Z unmittelbar nach dem Löschen, bevor der Papierkorb geantwortet hatte, ließ den Eintrag im Papierkorb stehen. Zweitens: Ein sehr früh getipptes Leerzeichen ging verloren. Danach liefen 55 Unit-Tests und 50 Oberflächentests fünfmal hintereinander vollständig grün, davon einmal bei 150 % Skalierung.
+
 ### Neu eingebaut (neunter Schritt): restliche Code-Pflege
 
 Stand: 55 Unit-Tests und 47 Oberflächentests grün, zweimal hintereinander.
