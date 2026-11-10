@@ -4,6 +4,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareDocumentForDisk } from '../shared/document';
 import { writeAtomic } from '../shared/atomicWrite';
+import {
+  chooseLibraryFolder,
+  createLibraryBoard,
+  duplicateLibraryBoard,
+  importLibraryJson,
+  libraryFolder,
+  listLibrary,
+  openLibraryBoard,
+  libraryFilePath,
+  recentLibrary,
+  renameLibraryBoard,
+  restoreLibraryBoard,
+  saveLibraryBoard,
+  seedDemoLibrary,
+  trashLibraryBoard,
+} from './libraryFiles';
 import { isSafeRecoveryPath, RECOVERY_FILE_NAME, RECOVERY_PREVIOUS_NAME } from '../shared/recovery';
 import { deleteBoardsMessage } from '../shared/gestures';
 import { inspectImageBytes } from '../shared/images';
@@ -138,6 +154,7 @@ function createWindow(): BrowserWindow {
       url.searchParams.set('theme', process.env.WHITEBOARD_THEME);
     }
     if (process.env.WHITEBOARD_E2E === '1') url.searchParams.set('e2e', '1');
+    if (process.env.WHITEBOARD_E2E_HOME === '1' || process.env.WHITEBOARD_LIBRARY_DEMO === '1') url.searchParams.set('home', '1');
     void win.loadURL(url.toString());
   } else {
     const query: Record<string, string> = {};
@@ -146,6 +163,7 @@ function createWindow(): BrowserWindow {
       query.theme = process.env.WHITEBOARD_THEME;
     }
     if (process.env.WHITEBOARD_E2E === '1') query.e2e = '1';
+    if (process.env.WHITEBOARD_E2E_HOME === '1' || process.env.WHITEBOARD_LIBRARY_DEMO === '1') query.home = '1';
     void win.loadFile(path.join(__dirname, '../renderer/index.html'), { query });
   }
 
@@ -431,6 +449,69 @@ function registerIpc(): void {
     return { ok: true };
   });
 
+  ipcMain.handle(Ipc.libraryList, async (_event, trashed: unknown) => listLibrary(trashed === true));
+  ipcMain.handle(Ipc.libraryRecent, async () => recentLibrary());
+  ipcMain.handle(Ipc.libraryCreate, async (_event, title: unknown) => createLibraryBoard(typeof title === 'string' ? title : undefined));
+  ipcMain.handle(Ipc.libraryOpen, async (_event, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false, error: MSG.invalidDoc };
+    return openLibraryBoard(id);
+  });
+  ipcMain.handle(Ipc.librarySave, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return { ok: false, error: MSG.saveFailed };
+    const id = (payload as { id?: unknown }).id;
+    const json = (payload as { json?: unknown }).json;
+    const known = (payload as { knownMtime?: unknown }).knownMtime;
+    if (typeof id !== 'string' || typeof json !== 'string') return { ok: false, error: MSG.saveFailed };
+    return saveLibraryBoard(id, json, typeof known === 'number' ? known : null);
+  });
+  ipcMain.handle(Ipc.libraryRename, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return { ok: false, error: MSG.saveFailed };
+    const id = (payload as { id?: unknown }).id;
+    const title = (payload as { title?: unknown }).title;
+    if (typeof id !== 'string' || typeof title !== 'string') return { ok: false, error: MSG.saveFailed };
+    return renameLibraryBoard(id, title);
+  });
+  ipcMain.handle(Ipc.libraryDuplicate, async (_event, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false, error: MSG.saveFailed };
+    return duplicateLibraryBoard(id);
+  });
+  ipcMain.handle(Ipc.libraryTrash, async (_event, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false, error: MSG.saveFailed };
+    let accepted = process.env.WHITEBOARD_E2E === '1';
+    if (!accepted && mainWindow) {
+      const result = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        buttons: ['Abbrechen', 'In den Papierkorb'],
+        cancelId: 0,
+        defaultId: 1,
+        noLink: true,
+        title: PRODUCT_NAME,
+        message: 'Dieses Board in den Papierkorb legen?',
+        detail: 'Es bleibt im Papierkorb und kann wiederhergestellt werden.',
+      });
+      accepted = result.response === 1;
+    }
+    if (!accepted) return { ok: true, canceled: true };
+    return trashLibraryBoard(id);
+  });
+  ipcMain.handle(Ipc.libraryRestore, async (_event, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false, error: MSG.saveFailed };
+    return restoreLibraryBoard(id);
+  });
+  ipcMain.handle(Ipc.libraryImport, async (_event, json: unknown) => {
+    if (typeof json !== 'string') return { ok: false, error: MSG.invalidDoc };
+    return importLibraryJson(json);
+  });
+  ipcMain.handle(Ipc.libraryFolder, async () => libraryFolder());
+  ipcMain.handle(Ipc.libraryChoose, async () => chooseLibraryFolder());
+  ipcMain.handle(Ipc.libraryConfirm, async (_event, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false };
+    const file = await libraryFilePath(id);
+    if (!file) return { ok: false };
+    currentPath = file;
+    return { ok: true };
+  });
+
   ipcMain.handle(Ipc.e2eFixture, async () => {
     if (process.env.WHITEBOARD_E2E !== '1') return { ok: false, error: 'disabled' };
     const file = process.env.WHITEBOARD_E2E_FILE;
@@ -472,13 +553,15 @@ function registerIpc(): void {
 }
 
 // DPI follows the operating system. Do not force a device scale factor.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
     callback(false);
   });
   applyProductionGuards();
   registerIpc();
+  if (process.env.WHITEBOARD_LIBRARY_DEMO === '1') await seedDemoLibrary();
   const win = createWindow();
+  win.on('focus', () => win.webContents.send(Ipc.libraryFocus));
   Menu.setApplicationMenu(buildMenu(win));
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

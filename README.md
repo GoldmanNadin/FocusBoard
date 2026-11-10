@@ -1,25 +1,37 @@
 # FocusBoard
 
-FocusBoard ist ein verspieltes, kartenbasiertes Whiteboard für Windows, in der Art von Milanote. Notizen, Bilder, Linien, Spalten, Aufgaben und verschachtelte Boards liegen auf einer freien Fläche. Die App ist ein lokaler Desktop-Prototyp (Electron): alles steht in einer JSON-Datei auf dem eigenen Rechner. Es gibt kein Konto, keinen Abgleich und keinen Stift.
+FocusBoard ist ein verspieltes, kartenbasiertes Whiteboard für Windows, in der Art von Milanote. Notizen, Bilder, Linien, Spalten, Aufgaben und verschachtelte Boards liegen auf einer freien Fläche. Die App ist ein lokaler Desktop-Prototyp (Electron): die Boards liegen als JSON-Dateien auf dem eigenen Rechner. Es gibt kein Konto, keinen Abgleich und keinen Stift.
 
-Diese Fassung ist **0.4.2**. Pfeile lassen sich an den Enden und am Strich ziehen. Der sichtbare Name ist FocusBoard. Die Installationskennung und der Datenordner der Version 0.3 bleiben, damit ein Update die vorhandene Sicherung nicht verlegt.
+Diese Fassung ist **0.4.3**. Beim Start erscheint die Übersicht „Meine Boards“. Der sichtbare Name ist FocusBoard. Die Installationskennung und der Datenordner der Version 0.3 bleiben, damit eine vorhandene Sicherung übernommen werden kann.
 
 Der Prototyp ist **nicht signiert**. Windows SmartScreen kann beim Start warnen.
 
 ## Funktionen
 
+- Übersicht „Meine Boards“ mit Kartenminiaturen, „zuletzt bearbeitet“ und „Zuletzt verwendet“
+- Neu, Umbenennen, Duplizieren und Löschen. Löschen legt das Board in den Papierkorb, von dort lässt es sich wiederherstellen.
+- Bibliotheksordner, voreingestellt `Dokumente\FocusBoard`, wechselbar und für OneDrive geeignet. Änderungen werden automatisch gespeichert.
+- Datei, Öffnen übernimmt eine JSON-Datei in die Bibliothek und lässt das Original liegen. Exportieren schreibt eine Kopie.
+- Logo und „Zur Übersicht“ kehren zur Startseite zurück. Eine alte automatische Sicherung kann übernommen werden.
 - Notizen in Gelb, Rosa, Türkis, Grün und Orange, dazu zwei Überschriften. Notizen wachsen mit dem Text mit.
 - Bildkarten, Spalten, die Karten tragen, Aufgaben mit Haken, Linien und fünf Sticker. „+ Eintrag“ bleibt innerhalb der Aufgabenkarte.
-- Unterboards, die über den Pfad oben geöffnet werden
+- Unterboards, die über den Pfad oben geöffnet werden und in der Datei ihres Boards bleiben
 - Werkzeuge lassen sich auf die Fläche ziehen. Linien docken an Karten an oder liegen frei. Beide Enden haben runde Griffe, die ganze Linie lässt sich ziehen, und beim Zeichnen folgt eine gestrichelte Vorschau.
 - Rückgängig und Wiederholen, Zoom (50 %, 100 %, 200 %, Alles) und eine weiße oder schwarze Fläche ohne Raster
 - Hell, Dunkel oder System ist eine Einstellung der App und gehört nicht zur Datei
 - Mausrad verschiebt senkrecht, Umschalt seitlich, Strg zoomt am Zeiger; zwei Finger verschieben beide Achsen, die Pinzetten-Geste zoomt. Strg+A markiert die Karten. Ein Rahmen wählt Karten und Linien zusammen.
 - Dateien der Version 0.1 und 0.2 lassen sich öffnen und werden als Version 3 gelesen
-- Zusätzliche Sicherung nur im eigenen Datenordner; die gewählte Datei wird nicht automatisch überschrieben. Speichern schreibt atomar und behält die vorige Fassung als `.bak`.
 - Bedienung auf Deutsch. Die Kennzeichnung „React Flow“ bleibt sichtbar, weil die Fläche mit dieser Bibliothek gebaut ist
 - Kartentext in der mitgelieferten Schrift Patrick Hand (SIL Open Font License, siehe `src/renderer/src/fonts/OFL.txt`)
 - Keine Animationen
+
+## Version 0.4.3
+
+- Eine Startseite „Meine Boards“ zeigt jedes Board als Kachel mit Miniatur der Karten, dem Namen und „zuletzt bearbeitet“. Oben steht „Zuletzt verwendet“.
+- Neu anlegen, umbenennen, duplizieren und löschen. Löschen fragt nach und legt das Board in den Papierkorb. Dort lässt es sich wiederherstellen.
+- Die Boards liegen in einem Bibliotheksordner. Voreinstellung ist `Dokumente\FocusBoard`. Der Ordner lässt sich ändern und eignet sich für OneDrive. Änderungen werden automatisch gespeichert.
+- Datei, Öffnen übernimmt eine einzelne JSON-Datei in die Bibliothek und lässt das Original liegen. Exportieren schreibt eine Kopie an einen anderen Ort.
+- Das Logo und „Zur Übersicht“ führen zurück zur Startseite. Gibt es eine alte automatische Sicherung, bietet die Übersicht an, sie zu übernehmen. Die Sicherungsdatei bleibt liegen.
 
 ## Version 0.4.2
 
@@ -42,9 +54,9 @@ Der Prototyp ist **nicht signiert**. Windows SmartScreen kann beim Start warnen.
 - Speichern schreibt erst in eine temporäre Datei und benennt sie danach um. Die vorige Fassung bleibt als `.bak`.
 - Hell, Dunkel oder System ist eine Einstellung der App. Rückgängig ändert das Thema nicht.
 
-## Oberfläche (0.4.2)
+## Oberfläche (0.4.3)
 
-Links: Auswahl, Notiz, zwei Überschriften, Bild, Spalte, Aufgaben, Linie und Mehr. Unter Mehr: Unterboard und fünf Sticker. Oben Pfad, Rückgängig, Wiederholen und Datei. Unten rechts Zoom, 50 %, 100 %, 200 % und Alles. Die Fläche ist rein weiß oder rein schwarz, ohne Raster. Notizen: Gelb, Rosa, Türkis, Grün, Orange.
+Beim Start die Übersicht „Meine Boards“. Auf der Fläche links: Auswahl, Notiz, zwei Überschriften, Bild, Spalte, Aufgaben, Linie und Mehr. Unter Mehr: Unterboard und fünf Sticker. Oben Pfad, Rückgängig, Wiederholen und Datei. Unten rechts Zoom, 50 %, 100 %, 200 % und Alles. Die Fläche ist rein weiß oder rein schwarz, ohne Raster. Notizen: Gelb, Rosa, Türkis, Grün, Orange.
 
 ## Technik
 
@@ -117,17 +129,17 @@ Das Skript setzt `CSC_IDENTITY_AUTO_DISCOVERY=false`, damit electron-builder kei
 Der Installer liegt danach unter:
 
 ```text
-release/FocusBoard-Setup-0.4.2.exe
+release/FocusBoard-Setup-0.4.3.exe
 ```
 
 ## Dateiformat
 
-Eine Datei, `format` ist `digitales-whiteboard`. Neue Dateien haben `version` `3`.
+Ein Board ist eine Datei, `format` ist `digitales-whiteboard`. Neue Dateien haben `version` `3`.
 Version 1 und 2 werden beim Öffnen angenommen. Darin stehen alle Boards, Karten, Linien, Spalten, Aufgaben, Ansicht und die Bilder als Data-URL.
-Die Datei ist zwischen PC und Laptop kopierbar. Sie kann durch die Bilder groß werden
+Unterboards bleiben in der Datei ihres Boards. Die Datei ist zwischen PC und Laptop kopierbar. Sie kann durch die Bilder groß werden
 (höchstens 8 MB je Bild, höchstens 40 MB für die ganze Datei).
 
-Speichern schreibt atomar: erst in eine temporäre Datei, dann umbenennen. Die vorige Fassung bleibt als `.bak`. Schlägt das Schreiben fehl, bleibt die alte Datei heil.
+Die Bibliothek speichert jedes Board als eigene JSON-Datei und schreibt Änderungen von selbst. Schreiben erfolgt atomar: erst in eine temporäre Datei, dann umbenennen. Die vorige Fassung bleibt als `.bak`. Schlägt das Schreiben fehl, bleibt die alte Datei heil. Eine Datei außerhalb der Bibliothek wird nicht still überschrieben.
 
 ## Bewusst nicht in dieser Fassung
 

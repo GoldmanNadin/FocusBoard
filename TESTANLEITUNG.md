@@ -1,13 +1,13 @@
-# Testanleitung Version 0.4.2
+# Testanleitung Version 0.4.3
 
-Kurze Prüfung für PC und Laptop, mit Maus und Tastatur. Die Fläche ist weiß oder schwarz, ohne Raster. Nur die Karten sind farbig. Es gibt keine Animationen. FocusBoard, das Logo und die Bedienung aus 0.4.1 bleiben. Neu ist, dass Pfeile verschoben werden können.
+Kurze Prüfung für PC und Laptop, mit Maus und Tastatur. Die Fläche ist weiß oder schwarz, ohne Raster. Nur die Karten sind farbig. Es gibt keine Animationen. Pfeile, FocusBoard und das Logo bleiben. Neu ist die Bibliothek: mehrere Boards, die automatisch gespeichert werden.
 
-Die Datei `FocusBoard-Setup-0.4.2.exe` ist nicht signiert. Windows kann warnen: Weitere Informationen, dann Trotzdem ausführen. Es wurde kein Zertifikat gekauft. Installiert wird `FocusBoard.exe`. Startmenü, Desktop-Verknüpfung und der Eintrag zum Entfernen heißen FocusBoard. Eine vorhandene Installation wird ersetzt, nicht doppelt angelegt. Die automatische Sicherung bleibt im Datenordner `Digitales Whiteboard`. Alte Dateien öffnen sich weiter.
+Die Datei `FocusBoard-Setup-0.4.3.exe` ist nicht signiert. Windows kann warnen: Weitere Informationen, dann Trotzdem ausführen. Es wurde kein Zertifikat gekauft. Installiert wird `FocusBoard.exe`. Startmenü, Desktop-Verknüpfung und der Eintrag zum Entfernen heißen FocusBoard. Eine vorhandene Installation wird ersetzt, nicht doppelt angelegt. Die Wiederherstellung bleibt im Datenordner `Digitales Whiteboard`. Die Boards liegen als einzelne JSON-Dateien im Ordner Dokumente/FocusBoard, sofern man keinen anderen Ordner wählt. Alte Dateien öffnen sich weiter.
 
 ## Name und Zeichen
 
 1. Oben links steht das Brett-Zeichen und der Name FocusBoard. Im hellen Thema ist das Zeichen dunkel, im dunklen hell. Ein Klick darauf springt zum Hauptboard.
-2. Die Fenstertitelzeile nennt FocusBoard. Hilfe, Über FocusBoard zeigt den Namen, die Version 0.4.2 und die MIT-Lizenz.
+2. Die Fenstertitelzeile nennt FocusBoard. Hilfe, Über FocusBoard zeigt den Namen, die Version 0.4.3 und die MIT-Lizenz.
 3. Das Programm- und Installer-Symbol ist das Brett ohne das Wort FocusBoard. Unter Linux wurde geprüft, dass die Größen 16, 24, 32, 48, 64, 128 und 256 im Symbol stecken und die EXE sie einbettet. Ob Windows den Symbol-Cache sofort aktualisiert, ist hier nicht geprüft.
 
 Diese Fassung wurde unter Linux gebaut. Nicht auf Windows-Hardware geprüft: echte Maus, Touchpad, SmartScreen, Installation auf dem PC, Startmenü, Desktop-Verknüpfung, Monitorwechsel bei laufender App, Windows-Skalierung 100 %, 150 % und 200 %.
@@ -54,6 +54,16 @@ Rückgängig und Wiederholen, oder Strg+Z und Strg+Y, gelten für die neuen Schr
 Datei, Speichern schreibt die gewählte JSON-Datei weiter im Format Version 3. Zusätzlich sichert die App eine Kopie nur in ihrem Datenordner `Digitales Whiteboard`. Diese Kopie überschreibt die gewählte Datei nicht. Nach einem Abbruch: Wiederherstellen oder Verwerfen.
 
 Eine Datei aus Version 0.2 öffnen. Die Notizen bleiben. Alte Pfeile werden zu Linien. Eine Datei aus Version 0.1 öffnet die Textkarten als gelbe Notizen.
+
+## Bibliothek
+
+1. Beim Start erscheint die Übersicht „Meine Boards“. Jede Kachel zeigt die Karten des Boards klein an ihrer Stelle und in ihrer Farbe. Ein leeres Board zeigt „Leer“. Dazu Name und „zuletzt bearbeitet“. Ein Klick öffnet das Board.
+2. „+ Neues Board“ legt ein Board an. Über „…“ oder die rechte Maustaste: Umbenennen, Duplizieren, Löschen. Löschen fragt nach und legt das Board in den Papierkorb. Dort steht Wiederherstellen.
+3. Änderungen werden von selbst in die Bibliotheksdatei geschrieben. Die Anzeige sagt „In der Bibliothek gespeichert“ oder „Speichert …“. Datei, Öffnen übernimmt eine einzelne JSON-Datei in die Bibliothek und lässt das Original liegen. Exportieren schreibt eine Kopie an einen anderen Ort.
+4. Das Logo und „Zur Übersicht“ gehen zurück zur Bibliothek. „Zuletzt verwendet“ steht oben.
+5. Der Ordner lässt sich über „Ordner“ ändern. Der Pfad steht gekürzt daneben, der volle Pfad im Tooltip. Wurde eine Datei außerhalb neuer gespeichert, überschreibt FocusBoard sie nicht still.
+6. Gibt es beim ersten Start eine automatische Sicherung, bietet die Übersicht an, sie zu übernehmen. Die Sicherungsdatei bleibt liegen.
+7. Unterboards bleiben in der Datei ihres Boards.
 
 ## Pfeile
 

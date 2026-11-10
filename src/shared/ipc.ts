@@ -20,6 +20,20 @@ export const Ipc = {
   recoveryWrite: 'recovery:write',
   recoveryClear: 'recovery:clear',
   e2eFixture: 'e2e:fixture',
+  libraryList: 'library:list',
+  libraryRecent: 'library:recent',
+  libraryCreate: 'library:create',
+  libraryOpen: 'library:open',
+  librarySave: 'library:save',
+  libraryRename: 'library:rename',
+  libraryDuplicate: 'library:duplicate',
+  libraryTrash: 'library:trash',
+  libraryRestore: 'library:restore',
+  libraryImport: 'library:import',
+  libraryFolder: 'library:folder',
+  libraryChoose: 'library:choose',
+  libraryConfirm: 'library:confirm',
+  libraryFocus: 'library:focus',
 } as const;
 
 export type SaveResult =

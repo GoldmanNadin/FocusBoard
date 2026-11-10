@@ -43,6 +43,7 @@ import { NOTE_COLOR_ORDER } from '../../shared/limits';
 import type { LineAnchor, NoteColor, StickerKind, TextStyle, WhiteboardDocument } from '../../shared/model';
 import { buildDemoDocument, drawSamplePng } from './demo';
 import { BoardCanvas, type PlacementApi } from './components/BoardCanvas';
+import { Home } from './Home';
 import type { CardLookup } from './components/cards';
 import {
   IconArrow,
@@ -76,6 +77,7 @@ function Workbench() {
   const api = window.whiteboard!;
   const params = new URLSearchParams(window.location.search);
   const demo = params.get('demo') === '1';
+  const startOnBoard = demo || (params.get('e2e') === '1' && params.get('home') !== '1');
   const queryTheme = params.get('theme') === 'dark' ? 'dark' : params.get('theme') === 'light' ? 'light' : null;
   const [hist, setHist] = useState<History<WhiteboardDocument>>(() => createHistory(createEmptyDocument()));
   const doc = hist.present;
@@ -83,6 +85,9 @@ function Workbench() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [syncToken, setSyncToken] = useState(0);
+  const [view, setView] = useState<'home' | 'board'>(startOnBoard ? 'board' : 'home');
+  const [libraryId, setLibraryId] = useState<string | null>(null);
+  const libraryMtime = useRef<number | null>(null);
   const [tool, setTool] = useState<Tool>('select');
   const [moreOpen, setMoreOpen] = useState(false);
   const [fileOpen, setFileOpen] = useState(false);
@@ -191,18 +196,30 @@ function Workbench() {
   }, [api, demo, queryTheme]);
 
   useEffect(() => {
-    if (demo) return;
+    if (demo || view !== 'board') return;
     const timer = window.setTimeout(() => {
       setSaving(true);
-      void api.writeRecovery(serializeDocument(histRef.current.present)).then((result) => {
+      const json = serializeDocument(histRef.current.present);
+      const library = libraryId;
+      const finish = (ok: boolean) => {
         setSaving(false);
-        if (result.ok) {
-          setRecoveryStamp(new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+        if (!ok) return;
+        setRecoveryStamp(new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+        if (library) setSavedSig(contentSignature(histRef.current.present));
+      };
+      void api.writeRecovery(json).then(async (recoveryResult) => {
+        if (library) {
+          const saved = await api.librarySave(library, json, libraryMtime.current);
+          if (saved.ok) libraryMtime.current = saved.mtime;
+          else setBanner(saved.error);
+          finish(recoveryResult.ok && saved.ok);
+          return;
         }
+        finish(recoveryResult.ok);
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [api, doc, demo]);
+  }, [api, doc, demo, view, libraryId]);
 
   function live(next: WhiteboardDocument) {
     histRef.current = replacePresent(histRef.current, next);
@@ -463,6 +480,17 @@ function Workbench() {
       return;
     }
     if (opened.canceled) return;
+    if (view === 'home') {
+      const imported = await api.libraryImport(opened.json);
+      await api.rejectOpened();
+      if (!imported.ok) {
+        setBanner(imported.error);
+        return;
+      }
+      await openLibrary(imported.id);
+      setFileOpen(false);
+      return;
+    }
     const accepted = loadJson(opened.json, opened.fileName, false);
     if (accepted) await api.confirmOpened();
     await api.clearRecovery();
@@ -672,6 +700,28 @@ function Workbench() {
     });
   }, [api]);
 
+  async function openLibrary(id: string) {
+    const opened = await api.libraryOpen(id);
+    if (!opened.ok) {
+      setBanner(opened.error);
+      return;
+    }
+    const accepted = loadJson(opened.json, opened.fileName, false);
+    if (!accepted) return;
+    await api.libraryConfirm(id);
+    libraryMtime.current = opened.mtime;
+    setLibraryId(id);
+    setView('board');
+  }
+
+  async function goHome() {
+    if (libraryId) {
+      const saved = await api.librarySave(libraryId, serializeDocument(histRef.current.present), libraryMtime.current);
+      if (saved.ok) libraryMtime.current = saved.mtime;
+    }
+    setView('home');
+  }
+
   const crumbs = breadcrumb(doc, current.id);
   const selectedNote = current.cards.some((card) => selectedIds.includes(card.id) && card.type === 'text' && card.style === 'note');
 
@@ -682,15 +732,16 @@ function Workbench() {
           type="button"
           className="brand"
           data-testid="brand-home"
-          aria-label="FocusBoard, zum Hauptboard"
-          onClick={() => {
-            if (current.id !== doc.rootBoardId) lookup.openBoard(doc.rootBoardId);
-          }}
+          aria-label="FocusBoard, zur Übersicht"
+          onClick={() => void goHome()}
         >
           <img src={markUrl} alt="" />
           <span>FocusBoard</span>
         </button>
-        <nav className="crumbs" aria-label="Board-Pfad">
+        {view === 'board' ? (
+          <button type="button" data-testid="library-home" onClick={() => void goHome()}>Zur Übersicht</button>
+        ) : null}
+        {view === 'board' ? <nav className="crumbs" aria-label="Board-Pfad">
           <button type="button" disabled={!current.parentBoardId} onClick={() => current.parentBoardId && lookup.openBoard(current.parentBoardId)}>
             Zurück
           </button>
@@ -731,14 +782,18 @@ function Workbench() {
               )}
             </span>
           ))}
-        </nav>
+        </nav> : null}
         <div className="top-actions">
-          <button type="button" data-testid="undo" data-past={hist.past.length} aria-label="Rückgängig" disabled={hist.past.length === 0 || editingId !== null} onClick={undo}>
-            <IconUndo />
-          </button>
-          <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0 || editingId !== null} onClick={redo}>
-            <IconRedo />
-          </button>
+          {view === 'board' ? (
+            <>
+              <button type="button" data-testid="undo" data-past={hist.past.length} aria-label="Rückgängig" disabled={hist.past.length === 0 || editingId !== null} onClick={undo}>
+                <IconUndo />
+              </button>
+              <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0 || editingId !== null} onClick={redo}>
+                <IconRedo />
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             data-testid="theme-toggle"
@@ -756,11 +811,11 @@ function Workbench() {
                 <button type="button" onClick={() => void newDocument()}>Neu</button>
                 <button type="button" onClick={() => void openDocument()}>Öffnen</button>
                 <button type="button" onClick={() => void save(false)}>Speichern</button>
-                <button type="button" onClick={() => void save(true)}>Speichern unter</button>
+                <button type="button" onClick={() => void save(true)}>Exportieren</button>
               </div>
             ) : null}
           </div>
-          <span className="save-state" data-testid="save-state">{saveStatus(dirty, saving, recoveryStamp)}</span>
+          <span className="save-state" data-testid="save-state">{saveStatus(dirty, saving, recoveryStamp, libraryId !== null || view === 'home')}</span>
         </div>
       </header>
       {banner ? (
@@ -769,14 +824,28 @@ function Workbench() {
           <button type="button" onClick={() => setBanner(null)}>Schließen</button>
         </div>
       ) : null}
-      {recovery ? (
+      {recovery && view === 'board' ? (
         <div className="banner" role="status" data-testid="recovery-banner">
           <span>Es gibt eine automatisch gesicherte Sitzung. Die ursprüngliche Datei wurde nicht überschrieben.</span>
           <button type="button" data-testid="recovery-restore" onClick={() => { loadJson(recovery, null, true); setRecovery(null); }}>Wiederherstellen</button>
           <button type="button" onClick={() => { setRecovery(null); void api.clearRecovery(); }}>Verwerfen</button>
         </div>
       ) : null}
-      <div className="workspace">
+      {view === 'home' ? (
+        <Home
+          recovery={recovery}
+          onOpen={(id) => void openLibrary(id)}
+          onAdoptRecovery={() => {
+            if (!recovery) return;
+            void api.libraryImport(recovery).then((result) => {
+              if (result.ok) void openLibrary(result.id);
+              else setBanner(result.error);
+            });
+          }}
+          onDismissRecovery={() => setRecovery(null)}
+        />
+      ) : null}
+      {view === 'board' ? <div className="workspace">
         <aside className="toolbar" aria-label="Werkzeuge">
           <ToolButton id="tool-select" label="Auswahl" pressed={tool === 'select'} onClick={() => { setTool('select'); setMoreOpen(false); }}>
             <IconSelect />
@@ -1067,7 +1136,7 @@ function Workbench() {
             </div>
           ) : null}
         </main>
-      </div>
+      </div> : null}
     </div>
   );
 }
@@ -1078,9 +1147,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.dataset.role === 'card-editor';
 }
 
-function saveStatus(dirty: boolean, saving: boolean, recoveryStamp: string | null): string {
+function saveStatus(dirty: boolean, saving: boolean, recoveryStamp: string | null, inLibrary: boolean): string {
   if (saving) return 'Speichert …';
-  if (!dirty) return 'Alle Änderungen gespeichert';
+  if (!dirty) return inLibrary ? 'In der Bibliothek gespeichert' : 'Alle Änderungen gespeichert';
   if (recoveryStamp) return `Nicht in Datei gespeichert · Sicherung von ${recoveryStamp}`;
   return 'Nicht in Datei gespeichert';
 }
