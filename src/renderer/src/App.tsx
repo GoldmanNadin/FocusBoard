@@ -1407,10 +1407,10 @@ function Workbench() {
           ))}
         </nav>
         <div className="top-actions">
-          <button type="button" data-testid="undo" data-past={hist.past.length} aria-label="Rückgängig" disabled={hist.past.length === 0 || editingId !== null} onClick={undo}>
+          <button type="button" data-testid="undo" data-past={hist.past.length} aria-label="Rückgängig" disabled={hist.past.length === 0 && editingId === null} onClick={() => { if (editingRef.current) finishEdit(); undo(); }}>
             <IconUndo />
           </button>
-          <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0 || editingId !== null} onClick={redo}>
+          <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0} onClick={() => { if (editingRef.current) finishEdit(); redo(); }}>
             <IconRedo />
           </button>
           <button type="button" data-testid="search-open" aria-label="Suchen (Strg+F)" title="Suchen (Strg+F)" onClick={() => setSearchOpen(true)}>

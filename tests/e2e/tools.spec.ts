@@ -823,3 +823,18 @@ test('a long, realistic session runs without a single script error', async () =>
   expect(problems).toEqual([]);
   await app.close();
 });
+
+test('the undo button works while writing: it ends editing and takes the typing back', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Bleibt');
+  await page.locator('.text-note').dblclick();
+  await expect(page.getByTestId('card-editor')).toBeFocused();
+  await page.keyboard.type(' und weg');
+  await expect(page.getByTestId('undo')).toBeEnabled();
+  await page.getByTestId('undo').click();
+  await expect(page.getByTestId('card-editor')).toHaveCount(0);
+  await expect(page.locator('.text-note .card-copy')).toHaveText('Bleibt');
+  await page.getByTestId('redo').click();
+  await expect(page.locator('.text-note .card-copy')).toHaveText('Bleibt und weg');
+  await app.close();
+});

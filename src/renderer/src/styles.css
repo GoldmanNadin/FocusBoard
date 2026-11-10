@@ -225,7 +225,8 @@ svg { width: 22px; height: 22px; display: block; }
   padding: 0 12px;
   cursor: grab;
 }
-.column-width { position: absolute; top: 8px; right: 0; width: 12px; height: 32px; cursor: ew-resize; }
+.column-width { position: absolute; top: 0; bottom: 0; right: -5px; width: 10px; cursor: ew-resize; border-radius: 6px; z-index: 3; }
+.column-width:hover, .card-column.is-selected .column-width { background: color-mix(in srgb, var(--ink) 25%, transparent); }
 .column-title, .title-editor, .todo-title {
   flex: 1;
   border: 0;

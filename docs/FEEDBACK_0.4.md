@@ -71,6 +71,18 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Neu eingebaut (neunter Schritt): restliche Code-Pflege
+
+Stand: 55 Unit-Tests und 47 Oberflächentests grün, zweimal hintereinander.
+
+| Punkt | Ergebnis |
+|---|---|
+| B12 | Das globale, bei jedem Rendern überschriebene `setCardLookup` ist ersetzt durch einen React-Context (`CardLookupContext`), den die Zeichenfläche bereitstellt. Alle 12 Kartentypen lesen ihn über `useContext`. |
+| B15 | Rückgängig und Wiederholen oben sind beim Schreiben nicht mehr ausgegraut. Ein Klick beendet das Schreiben und nimmt es als einen Schritt zurück (getestet). |
+| B16 | Spalten haben nur noch einen Breitengriff: einen schmalen Streifen über die ganze rechte Kante, sichtbar beim Überfahren und bei Auswahl. Der zweite Größengriff, dessen Höhenänderung sofort wieder überschrieben wurde, ist weg. |
+
+Damit sind alle Punkte aus A, B, C und D umgesetzt. Offen ist allein, was sich nur auf echter Windows-Hardware prüfen lässt (siehe „Was ausdrücklich nicht geprüft werden konnte“ und Checkliste G).
+
 ### Neu eingebaut (achter Schritt): Aufräumen und Gesamtprüfung
 
 Stand: 55 Unit-Tests und 46 Oberflächentests grün, zweimal hintereinander.
@@ -131,7 +143,7 @@ Stand: 50 Unit-Tests und 38 Oberflächentests grün, zweimal hintereinander.
 | „Mehr“-Menü | Zweispaltig, scrollt bei sehr kleinen Fenstern. |
 | Suche | Findet auch Formen und Farbfelder. |
 
-Noch offen: B12 (globales `setCardLookup` durch einen Store ersetzen), B15 und B16 (reine Code-Pflege ohne sichtbare Fehler) und der Test auf echter Windows-Hardware.
+Noch offen: nur der Test auf echter Windows-Hardware.
 
 ## 0. Kurzfazit
 

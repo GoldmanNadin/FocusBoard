@@ -23,7 +23,7 @@ import { columnAtPoint, insertionIndex } from '../../../shared/columns';
 import { bendFromPoint, curveControl } from '../../../shared/lines';
 import { snapRect, type Guide } from '../../../shared/snap';
 import { COLUMN_GAP, COLUMN_HEADER, COLUMN_PAD } from '../../../shared/limits';
-import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, TableCardNode, FileCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
+import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, TableCardNode, FileCardNode, StickerCardNode, TextCardNode, TodoCardNode, CardLookupContext, type CardLookup } from './cards';
 
 const nodeTypes = {
   textCard: TextCardNode,
@@ -116,10 +116,10 @@ export function BoardCanvas(props: {
     onSelectionRef.current(wanted ? [...wanted] : boardRef.current.cards.map((card) => card.id));
   }, [props.selectRequest?.token]);
 
-  setCardLookup(props.lookup);
 
   return (
     <div className={`board-canvas tool-${props.tool}`}>
+      <CardLookupContext.Provider value={props.lookup}>
       <ReactFlowProvider>
         <FlowSurface
           {...props}
@@ -129,6 +129,7 @@ export function BoardCanvas(props: {
           setEdges={setEdges}
         />
       </ReactFlowProvider>
+      </CardLookupContext.Provider>
     </div>
   );
 }

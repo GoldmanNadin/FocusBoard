@@ -1,6 +1,6 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { DEFAULT_COMMENT_SIZE, DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_TABLE_SIZE, MIN_FILE_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { DEFAULT_COMMENT_SIZE, DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_TABLE_SIZE, MIN_FILE_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
 import type { BoardCard, FileCard, ImageCard, LineColor, LinkCard, ShapeCard, SketchCard, SketchStroke, StickerCard, SwatchCard, TableCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
@@ -58,7 +58,7 @@ export type CardLookup = {
   resizeColumnTo: (id: string, width: number) => void;
 };
 
-let lookup: CardLookup = {
+const defaultLookup: CardLookup = {
   text: () => undefined,
   image: () => undefined,
   boardTitle: () => '',
@@ -102,9 +102,11 @@ let lookup: CardLookup = {
   resizeColumnTo: () => undefined,
 };
 
-export function setCardLookup(next: CardLookup) {
-  lookup = next;
-}
+/**
+ * Gives every card the functions it needs to read and change the board. Provided once by the canvas;
+ * replaces the earlier module-level variable that was overwritten on every render.
+ */
+export const CardLookupContext = createContext<CardLookup>(defaultLookup);
 
 function Handles({ visible }: { visible: boolean }) {
   if (!visible) return null;
@@ -216,6 +218,7 @@ function baseTextHeight(style: TextCard['style']): number {
 }
 
 export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<Node<FlowData, 'textCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.text(id);
   const [draft, setDraft] = useState(card?.text ?? '');
   const measureRef = useRef<HTMLDivElement>(null);
@@ -333,6 +336,7 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
 }
 
 export function ImageCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'imageCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.image(id);
   const file = card ? lookup.fileUrl(card.fileId) : undefined;
   return (
@@ -352,6 +356,7 @@ export function ImageCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
 }
 
 export function BoardCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'boardCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.boardCard(id);
   const title = card ? lookup.boardTitle(card.boardId) : '';
   const [draft, setDraft] = useState(title);
@@ -396,6 +401,7 @@ export function BoardCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
 }
 
 export function ColumnCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'columnCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.column(id);
   const [draft, setDraft] = useState(card?.title ?? '');
   useEffect(() => {
@@ -411,7 +417,7 @@ export function ColumnCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
       data-collapsed={card.collapsed ? '1' : '0'}
       data-children={card.childIds.join(' ')}
     >
-      {resizer(selected && !data.editing, MIN_COLUMN_SIZE)}
+      {/* One way to change a column's width: the grip along its right edge (its height follows its cards). */}
       <Handles visible={data.connect} />
       <header className="column-handle">
         {data.editing ? (
@@ -482,6 +488,7 @@ function focusTodoItem(itemId: string) {
 }
 
 export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'todoCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.todo(id);
   const itemKey = card?.items.map((item) => item.id).join(' ') ?? '';
   useEffect(() => {
@@ -558,6 +565,7 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
 }
 
 export function StickerCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'stickerCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.sticker(id);
   if (!card) return null;
   return (
@@ -570,6 +578,7 @@ export function StickerCardNode({ id, selected, data }: NodeProps<Node<FlowData,
 }
 
 export function LinkCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'linkCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.link(id);
   if (!card) return null;
   let host = card.url;
@@ -616,6 +625,7 @@ function polyline(points: number[]): string {
 }
 
 export function SketchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'sketchCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.sketch(id);
   const articleRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<number[] | null>(null);
@@ -707,6 +717,7 @@ export function SketchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
 }
 
 export function SwatchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'swatchCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.swatch(id);
   if (!card) return null;
   const copy = () => {
@@ -762,6 +773,7 @@ function shapeOutline(shape: ShapeCard['shape']) {
 }
 
 export function ShapeCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'shapeCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.shape(id);
   if (!card) return null;
   const color = NOTE_COLORS[card.color];
@@ -816,6 +828,7 @@ function focusCell(id: string, row: number, col: number): boolean {
 }
 
 export function TableCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'tableCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.table(id);
   const shape = card ? `${card.rows.length}x${card.rows[0]?.length ?? 0}` : '';
   useEffect(() => {
@@ -881,6 +894,7 @@ export function TableCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
 const FILE_BADGES: Record<string, string> = { pdf: '#d64545', docx: '#2b579a', odt: '#2b579a', rtf: '#2b579a', xlsx: '#217346', ods: '#217346', csv: '#217346', pptx: '#d24726', odp: '#d24726', zip: '#7a6a4f' };
 
 export function FileCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'fileCard'>>) {
+  const lookup = useContext(CardLookupContext);
   const card = lookup.file(id);
   if (!card) return null;
   const ext = extensionOf(card.name);
