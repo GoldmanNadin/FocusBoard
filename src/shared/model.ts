@@ -62,6 +62,15 @@ export type TableCard = Placed & {
   rows: string[][];
 };
 
+/** An attached document, embedded as a base64 data URL. Only harmless document types are allowed. */
+export type FileCard = Placed & {
+  type: 'file';
+  name: string;
+  mime: string;
+  size: number;
+  data: string;
+};
+
 export type ImageCard = Placed & {
   type: 'image';
   fileId: string;
@@ -101,7 +110,7 @@ export type ColumnCard = {
   childIds: string[];
 };
 
-export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard | SwatchCard | ShapeCard | TableCard;
+export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard | SwatchCard | ShapeCard | TableCard | FileCard;
 
 export type LineColor = NoteColor | 'ink';
 

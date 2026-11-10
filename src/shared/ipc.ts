@@ -26,6 +26,12 @@ export const Ipc = {
   copyText: 'clipboard:copy-text',
   takePendingOpen: 'doc:take-pending-open',
   openRequest: 'doc:open-request',
+  openAttachment: 'attachment:open',
+  saveAttachment: 'attachment:save',
+  trashAdd: 'trash:add',
+  trashList: 'trash:list',
+  trashTake: 'trash:take',
+  trashDelete: 'trash:delete',
 } as const;
 
 export type SaveResult =
@@ -55,6 +61,8 @@ export type RecoveryReadResult =
   | { ok: false; error: string };
 
 export type RecoveryWriteResult = { ok: true } | { ok: false; error: string };
+
+export type TrashEntry = { id: string; at: number; title: string; count: number };
 
 export type RecentBoard = { path: string; name: string; folder: string; at: number; exists: boolean };
 

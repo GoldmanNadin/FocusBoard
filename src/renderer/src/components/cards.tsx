@@ -1,10 +1,11 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { DEFAULT_COMMENT_SIZE, DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_TABLE_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
-import type { BoardCard, ImageCard, LineColor, LinkCard, ShapeCard, SketchCard, SketchStroke, StickerCard, SwatchCard, TableCard, TextCard } from '../../../shared/model';
+import { DEFAULT_COMMENT_SIZE, DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_TABLE_SIZE, MIN_FILE_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import type { BoardCard, FileCard, ImageCard, LineColor, LinkCard, ShapeCard, SketchCard, SketchStroke, StickerCard, SwatchCard, TableCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
 import { renderCardText } from '../markdown';
+import { extensionOf, formatBytes } from '../../../shared/attachments';
 
 const sides = [
   ['top', Position.Top],
@@ -41,6 +42,9 @@ export type CardLookup = {
   commitShapeText: (id: string, text: string) => void;
   notify: (text: string) => void;
   table: (id: string) => TableCard | undefined;
+  file: (id: string) => FileCard | undefined;
+  openFile: (id: string) => void;
+  saveFile: (id: string) => void;
   setCell: (id: string, row: number, col: number, text: string) => void;
   tableOp: (id: string, op: 'addRow' | 'addColumn' | 'removeRow' | 'removeColumn', after?: number) => void;
   copyText: (text: string) => void;
@@ -82,6 +86,9 @@ let lookup: CardLookup = {
   commitShapeText: () => undefined,
   notify: () => undefined,
   table: () => undefined,
+  file: () => undefined,
+  openFile: () => undefined,
+  saveFile: () => undefined,
   setCell: () => undefined,
   tableOp: () => undefined,
   copyText: () => undefined,
@@ -172,6 +179,9 @@ let earlyTyping = '';
 
 export function bufferEarlyTyping(key: string) {
   earlyTyping = (earlyTyping + key).slice(-200);
+  // If the editor is already on screen (it just has not got the focus yet), write straight into it.
+  const editor = document.querySelector<HTMLTextAreaElement>('textarea.card-editor, textarea.shape-editor');
+  if (editor) flushEarlyTyping(editor);
 }
 
 export function clearEarlyTyping() {
@@ -864,6 +874,33 @@ export function TableCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
           ))}
         </tbody>
       </table>
+    </article>
+  );
+}
+
+const FILE_BADGES: Record<string, string> = { pdf: '#d64545', docx: '#2b579a', odt: '#2b579a', rtf: '#2b579a', xlsx: '#217346', ods: '#217346', csv: '#217346', pptx: '#d24726', odp: '#d24726', zip: '#7a6a4f' };
+
+export function FileCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'fileCard'>>) {
+  const card = lookup.file(id);
+  if (!card) return null;
+  const ext = extensionOf(card.name);
+  return (
+    <article className={`card card-file${selected ? ' is-selected' : ''}`} data-name={card.name} data-column={card.columnId ?? ''}>
+      {widthResizer(selected, MIN_FILE_SIZE.width)}
+      <Handles visible={data.connect} />
+      <div className="file-row">
+        <span className="file-badge" style={{ background: FILE_BADGES[ext] ?? '#5c5146' }} aria-hidden="true">
+          {ext.toUpperCase()}
+        </span>
+        <span className="file-meta">
+          <strong title={card.name}>{card.name}</strong>
+          <span>{formatBytes(card.size)}</span>
+        </span>
+      </div>
+      <div className="file-actions">
+        <button type="button" className="nodrag nopan" data-testid="file-open" onClick={() => lookup.openFile(id)}>Öffnen</button>
+        <button type="button" className="nodrag nopan" data-testid="file-save" onClick={() => lookup.saveFile(id)}>Speichern…</button>
+      </div>
     </article>
   );
 }

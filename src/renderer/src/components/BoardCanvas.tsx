@@ -23,7 +23,7 @@ import { columnAtPoint, insertionIndex } from '../../../shared/columns';
 import { bendFromPoint, curveControl } from '../../../shared/lines';
 import { snapRect, type Guide } from '../../../shared/snap';
 import { COLUMN_GAP, COLUMN_HEADER, COLUMN_PAD } from '../../../shared/limits';
-import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, TableCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
+import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, TableCardNode, FileCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
 
 const nodeTypes = {
   textCard: TextCardNode,
@@ -37,6 +37,7 @@ const nodeTypes = {
   swatchCard: SwatchCardNode,
   shapeCard: ShapeCardNode,
   tableCard: TableCardNode,
+  fileCard: FileCardNode,
 };
 
 export type PlacementApi = {

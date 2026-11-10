@@ -6,6 +6,7 @@ import {
   type OpenResult,
   type PickImageResult,
   type RecentBoard,
+  type TrashEntry,
   type RecoveryReadResult,
   type RecoveryWriteResult,
   type SaveResult,
@@ -80,6 +81,24 @@ const api = {
   },
   onOpenRequest(callback: () => void): () => void {
     return subscribe(Ipc.openRequest, callback);
+  },
+  openAttachment(file: { name: string; data: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+    return ipcRenderer.invoke(Ipc.openAttachment, file);
+  },
+  saveAttachment(file: { name: string; data: string }): Promise<SaveResult> {
+    return ipcRenderer.invoke(Ipc.saveAttachment, file);
+  },
+  trashAdd(entry: { title: string; count: number; clip: string }): Promise<boolean> {
+    return ipcRenderer.invoke(Ipc.trashAdd, entry);
+  },
+  trashList(): Promise<TrashEntry[]> {
+    return ipcRenderer.invoke(Ipc.trashList);
+  },
+  trashTake(id: string): Promise<{ ok: true; clip: string } | { ok: false; error: string }> {
+    return ipcRenderer.invoke(Ipc.trashTake, id);
+  },
+  trashDelete(id: string | 'all'): Promise<boolean> {
+    return ipcRenderer.invoke(Ipc.trashDelete, id);
   },
   listRecent(): Promise<RecentBoard[]> {
     return ipcRenderer.invoke(Ipc.recentList);

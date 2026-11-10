@@ -20,7 +20,8 @@ export function contentSignature(doc: WhiteboardDocument): string {
       id: board.id,
       title: board.title,
       parentBoardId: board.parentBoardId,
-      cards: board.cards,
+      // Attachments are immutable once added; their size stands in for the (large) data.
+      cards: board.cards.map((card) => (card.type === 'file' ? { ...card, data: card.data.length } : card)),
       connectors: board.connectors,
       lines: board.lines,
     })),

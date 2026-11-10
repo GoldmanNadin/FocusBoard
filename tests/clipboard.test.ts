@@ -236,3 +236,27 @@ describe('placement', () => {
     expect(freeSpot({ x: 500, y: 500 }, { width: 100, height: 60 }, taken)).toEqual({ x: 500, y: 500 });
   });
 });
+
+import { addFileCard, inspectAttachment } from '../src/shared/attachments';
+
+describe('attachments', () => {
+  const b64 = (text: string) => `data:application/octet-stream;base64,${Buffer.from(text).toString('base64')}`;
+  it('accepts documents, refuses programs, scripts and path tricks', () => {
+    expect(inspectAttachment('Angebot.pdf', b64('%PDF')).ok).toBe(true);
+    for (const bad of ['setup.exe', 'run.bat', 'x.js', 'page.html', 'link.lnk', 'macro.docm', 'bild.svg', 'ohne-endung']) {
+      expect(inspectAttachment(bad, b64('x')).ok).toBe(false);
+    }
+    const tricky = inspectAttachment('..\\\\..\\\\Windows\\\\boot.txt', b64('x'));
+    expect(tricky.ok && tricky.name).toBe('boot.txt');
+    expect(inspectAttachment('leer.txt', 'data:text/plain;base64,').ok).toBe(false);
+  });
+
+  it('stores attachments that survive saving, but tampered files are refused', () => {
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addFileCard(doc, 'rootboard', { name: 'notiz.txt', dataUrl: b64('Hallo') }, { x: 0, y: 0 }));
+    expect(validateDocument(serializeDocument(doc)).ok).toBe(true);
+    const raw = JSON.parse(serializeDocument(doc));
+    raw.boards[0].cards[0].name = 'notiz.exe';
+    expect(validateDocument(JSON.stringify(raw)).ok).toBe(false);
+  });
+});

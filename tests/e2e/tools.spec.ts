@@ -606,3 +606,68 @@ test('comments and tables from the More menu', async () => {
   await expect(page.getByTestId('search-hit')).toContainText('Kommentar');
   await app.close();
 });
+
+async function dropFiles(page: Page, files: { name: string; text: string; type?: string }[], x: number, y: number) {
+  await page.evaluate(
+    ([list, px, py]) => {
+      const transfer = new DataTransfer();
+      for (const file of list) transfer.items.add(new File([file.text], file.name, { type: file.type ?? '' }));
+      const target = document.querySelector('.flow-shell')!;
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, clientX: px, clientY: py, dataTransfer: transfer }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: px, clientY: py, dataTransfer: transfer }));
+    },
+    [files, x, y] as const,
+  );
+}
+
+test('attach documents; programs and scripts are refused; open and save attachments', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-attach-'));
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData, WHITEBOARD_E2E_EXPORT: path.join(userData, 'export.png') },
+  });
+  const page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  const b = await pane(page);
+  await dropFiles(page, [{ name: 'Angebot.pdf', text: '%PDF-1.4 test' }, { name: 'liste.txt', text: 'Milch\nBrot' }, { name: 'virus.exe', text: 'MZ' }, { name: 'skript.js', text: 'alert(1)' }], b.x + 200, b.y + 150);
+  await expect(page.locator('.card-file')).toHaveCount(2);
+  await expect(page.locator('.banner')).toContainText('virus.exe, skript.js');
+  await expect(page.locator('.card-file[data-name="Angebot.pdf"]')).toContainText('PDF');
+  await page.locator('.card-file[data-name="Angebot.pdf"]').getByTestId('file-open').click();
+  await expect(page.locator('.banner')).not.toContainText('nicht geöffnet');
+  await page.locator('.card-file[data-name="liste.txt"]').getByTestId('file-save').click();
+  await expect(page.getByTestId('toast')).toContainText('liste.txt');
+  expect(readFileSync(path.join(userData, 'liste.txt'), 'utf8')).toBe('Milch\nBrot');
+  await page.keyboard.press('Control+F');
+  await page.getByTestId('search-input').fill('angebot');
+  await expect(page.getByTestId('search-hit')).toContainText('Datei');
+  await app.close();
+});
+
+test('deleted cards go to the trash and can be restored after a restart', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-trash-'));
+  const env = { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData };
+  let app = await electron.launch({ args: ['.'], cwd: process.cwd(), env });
+  let page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  await addNote(page, 200, 150, 'Wichtige Idee');
+  await page.locator('.react-flow__node:has(.text-note)').click();
+  await page.keyboard.press('Delete');
+  await expect(page.locator('.text-note')).toHaveCount(0);
+  await app.close();
+
+  app = await electron.launch({ args: ['.'], cwd: process.cwd(), env });
+  page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  const banner = page.getByTestId('recovery-banner');
+  if (await banner.isVisible()) await banner.getByRole('button', { name: 'Verwerfen' }).click();
+  await page.getByTestId('file-menu').click();
+  await page.getByTestId('open-trash').click();
+  await expect(page.getByTestId('trash-entry')).toContainText('Wichtige Idee');
+  await page.getByTestId('trash-restore').click();
+  await expect(page.locator('.text-note', { hasText: 'Wichtige Idee' })).toBeVisible();
+  await expect(page.getByTestId('trash-entry')).toHaveCount(0);
+  await expect(page.locator('.search-empty')).toHaveText('Der Papierkorb ist leer.');
+  await app.close();
+});

@@ -29,6 +29,8 @@ export const MIN_SKETCH_SIZE = { width: 120, height: 90 };
 export const MIN_SWATCH_SIZE = { width: 110, height: 120 };
 export const MIN_SHAPE_SIZE = { width: 60, height: 48 };
 export const MIN_TABLE_SIZE = { width: 160, height: 60 };
+export const MIN_FILE_SIZE = { width: 180, height: 72 };
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_SKETCH_STROKES = 400;
 export const MAX_SKETCH_POINTS = 40_000;
 export const MAX_URL_LENGTH = 2000;
@@ -47,6 +49,7 @@ export const DEFAULT_SKETCH_SIZE = { width: 360, height: 270 };
 export const DEFAULT_SWATCH_SIZE = { width: 160, height: 180 };
 export const DEFAULT_SHAPE_SIZE = { width: 200, height: 140 };
 export const DEFAULT_TABLE_SIZE = { width: 376, height: 130 };
+export const DEFAULT_FILE_SIZE = { width: 260, height: 92 };
 export const COLUMN_HEADER = 48;
 export const COLUMN_PAD = 8;
 export const COLUMN_GAP = 8;
@@ -112,7 +115,7 @@ export const MSG = {
   nothingToPaste: 'In der Zwischenablage ist nichts, das eingefügt werden kann.',
 } as const;
 
-export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link' | 'sketch' | 'swatch' | 'shape' | 'table';
+export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link' | 'sketch' | 'swatch' | 'shape' | 'table' | 'file';
 
 export function minSizeFor(type: CardTypeName): { width: number; height: number } {
   if (type === 'text') return MIN_TEXT_SIZE;
@@ -125,6 +128,7 @@ export function minSizeFor(type: CardTypeName): { width: number; height: number 
   if (type === 'swatch') return MIN_SWATCH_SIZE;
   if (type === 'shape') return MIN_SHAPE_SIZE;
   if (type === 'table') return MIN_TABLE_SIZE;
+  if (type === 'file') return MIN_FILE_SIZE;
   return MIN_BOARD_SIZE;
 }
 
@@ -139,5 +143,6 @@ export function defaultSizeFor(type: CardTypeName): { width: number; height: num
   if (type === 'swatch') return DEFAULT_SWATCH_SIZE;
   if (type === 'shape') return DEFAULT_SHAPE_SIZE;
   if (type === 'table') return DEFAULT_TABLE_SIZE;
+  if (type === 'file') return DEFAULT_FILE_SIZE;
   return DEFAULT_BOARD_SIZE;
 }

@@ -446,3 +446,20 @@ html[data-theme="dark"] .text-comment { background: #3a3420; color: #fff3c4; bor
 .card-table input:focus-visible { outline: 2px solid #ff9a2e; outline-offset: -2px; }
 .table-tools { position: absolute; left: 0; bottom: calc(100% + 6px); display: flex; gap: 4px; padding: 4px; background: var(--chrome); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); z-index: 10; }
 .table-tools button { border: 1px solid var(--line); background: var(--chrome); border-radius: 8px; padding: 2px 8px; font-size: 13px; }
+
+.card-file { padding: 10px 12px; gap: 8px; justify-content: space-between; }
+.file-row { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.file-badge { flex: none; min-width: 44px; height: 44px; border-radius: 10px; color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
+.file-meta { display: flex; flex-direction: column; min-width: 0; }
+.file-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta span { font-size: 12px; color: var(--muted); }
+.file-actions { display: flex; gap: 6px; }
+.file-actions button { border: 1px solid var(--line); background: var(--chrome); border-radius: 9px; padding: 3px 10px; font-size: 13px; }
+
+.trash-head { display: flex; justify-content: space-between; align-items: center; }
+.trash-head button, .trash-actions button, .trash-empty { border: 1px solid var(--line); background: var(--chrome); border-radius: 9px; padding: 3px 9px; }
+.trash-entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 9px; }
+.trash-entry > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.trash-entry > span:first-child > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trash-actions { display: flex; gap: 4px; flex: none; }
+.trash-empty { align-self: flex-end; }

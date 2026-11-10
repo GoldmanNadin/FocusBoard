@@ -1,4 +1,5 @@
 import { inspectImageDataUrl } from './images';
+import { inspectAttachment } from './attachments';
 import { isValidId } from './ids';
 import {
   APP_VERSION,
@@ -100,7 +101,7 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
   const x = numberIn(value.x, -COORD_LIMIT, COORD_LIMIT);
   const y = numberIn(value.y, -COORD_LIMIT, COORD_LIMIT);
   if (x == null || y == null) return null;
-  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch' && type !== 'swatch' && type !== 'shape' && type !== 'table') {
+  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch' && type !== 'swatch' && type !== 'shape' && type !== 'table' && type !== 'file') {
     return null;
   }
   const min = minSizeFor(type);
@@ -149,6 +150,12 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
         })
       : [];
     return { id, type: 'todo', x, y, width, height, title, items, columnId: readColumnId(value.columnId) };
+  }
+  if (type === 'file') {
+    if (typeof value.name !== 'string' || typeof value.data !== 'string') return null;
+    const checked = inspectAttachment(value.name, value.data);
+    if (!checked.ok || checked.name !== value.name) return null;
+    return { id, type: 'file', x, y, width, height, name: checked.name, mime: checked.mime, size: checked.size, data: checked.data, columnId: readColumnId(value.columnId) };
   }
   if (type === 'table') {
     if (!Array.isArray(value.rows) || value.rows.length < 1 || value.rows.length > 40) return null;

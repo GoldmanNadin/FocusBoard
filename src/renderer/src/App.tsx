@@ -29,6 +29,7 @@ import { searchDocument, type SearchHit } from '../../shared/search';
 import { addSketchCard, addStroke, removeLastStroke } from '../../shared/sketch';
 import { addShapeCard, addSwatchCard, setShapeText, updateSwatch } from '../../shared/shapes';
 import { freeSpot } from '../../shared/snap';
+import { ATTACHMENT_TYPES, addFileCard, extensionOf } from '../../shared/attachments';
 import { addTableCard, addTableColumn, addTableRow, removeTableColumn, removeTableRow, setCell } from '../../shared/table';
 import type { ShapeKind } from '../../shared/model';
 import { TEMPLATES, insertTemplate, type TemplateName } from '../../shared/templates';
@@ -50,7 +51,8 @@ import {
 } from '../../shared/history';
 import { NOTE_COLOR_NAMES, NOTE_COLOR_ORDER, NOTE_COLORS, defaultSizeFor } from '../../shared/limits';
 import type { LineAnchor, NoteColor, StickerKind, TextStyle, WhiteboardDocument } from '../../shared/model';
-import type { RecentBoard } from '../../shared/ipc';
+import type { RecentBoard, TrashEntry } from '../../shared/ipc';
+import { plain } from '../../shared/search';
 import { buildDemoDocument, drawSamplePng } from './demo';
 import { BoardCanvas, type PlacementApi } from './components/BoardCanvas';
 import { bufferEarlyTyping, clearEarlyTyping, requestCellFocus, type CardLookup } from './components/cards';
@@ -124,6 +126,7 @@ function Workbench() {
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [recent, setRecent] = useState<RecentBoard[]>([]);
+  const [trash, setTrash] = useState<TrashEntry[] | null>(null);
   const [showMiniMap, setShowMiniMap] = useState(() => readPref('focusboard-minimap') === '1');
   const [font, setFont] = useState<'hand' | 'clear'>(() => (readPref('focusboard-font') === 'clear' ? 'clear' : 'hand'));
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,6 +134,7 @@ function Workbench() {
   const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
   const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const attachInput = useRef<HTMLInputElement>(null);
   // After opening, measure the menu and move it up just enough to fit inside the window.
   useLayoutEffect(() => {
     const menu = moreRef.current;
@@ -496,6 +500,9 @@ function Workbench() {
       setBanner(result.error);
       return [];
     }
+    // Keep a copy in the app's trash so it can come back even after the program was closed.
+    const clip = copyCards(histRef.current.present, board.id, present);
+    if (clip) void api.trashAdd({ title: trashTitle(clip, (id) => getBoard(histRef.current.present, id)?.title ?? ''), count: present.length, clip: JSON.stringify(clip) });
     commit(result.doc);
     setSelectedIds([]);
     showToast(present.length === 1 ? 'Karte gelöscht' : `${present.length} Karten gelöscht`, true);
@@ -510,6 +517,7 @@ function Workbench() {
         if (card.type === 'todo') return [card.title, ...card.items.map((item) => `${item.done ? '[x]' : '[ ]'} ${item.text}`)];
         if (card.type === 'link') return [card.url];
         if (card.type === 'shape') return [card.text];
+        if (card.type === 'file') return [card.name];
         if (card.type === 'table') return [card.rows.map((row) => row.join('\t')).join('\n')];
         if (card.type === 'swatch') return [`${card.label} ${card.color.toUpperCase()}`.trim()];
         if (card.type === 'column') return [card.title];
@@ -586,12 +594,32 @@ function Workbench() {
       return;
     }
     const images = files.filter((file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type));
-    if (images.length === 0) {
-      setBanner(files.length > 0 ? 'Nur PNG, JPEG, GIF und WebP können als Bild eingefügt werden.' : 'Nichts zum Einfügen.');
-      return;
+    const attachments = files.filter((file) => !images.includes(file) && ATTACHMENT_TYPES[extensionOf(file.name)]);
+    const refused = files.filter((file) => !images.includes(file) && !attachments.includes(file));
+    if (refused.length > 0) {
+      setBanner(`${refused.map((file) => file.name).join(', ')}: Dieser Dateityp kann nicht angehängt werden (z. B. Programme und Skripte sind aus Sicherheitsgründen ausgeschlossen).`);
     }
+    if (images.length === 0 && attachments.length === 0) return;
     const created: string[] = [];
     let present = histRef.current.present;
+    for (const [index, file] of attachments.entries()) {
+      if (file.size > 10 * 1024 * 1024) {
+        setBanner(`${file.name}: Die Datei ist zu groß (höchstens 10 MB).`);
+        continue;
+      }
+      const dataUrl = await readAsDataUrl(file);
+      if (!dataUrl) continue;
+      const slot = images.length + index;
+      const position = { x: at.x + (slot % 4) * 300, y: at.y + Math.floor(slot / 4) * 300 };
+      const result = addFileCard(present, boardRef.current, { name: file.name, dataUrl }, position);
+      if (!result.ok) {
+        setBanner(result.error);
+        continue;
+      }
+      present = result.doc;
+      const card = getBoard(present, boardRef.current)?.cards.at(-1);
+      if (card) created.push(card.id);
+    }
     for (const [index, file] of images.entries()) {
       const dataUrl = await readAsDataUrl(file);
       if (!dataUrl) {
@@ -654,6 +682,10 @@ function Workbench() {
       openLinkPrompt({ x: card.x, y: card.y }, card.id, card.url);
       return true;
     }
+    if (card?.type === 'file') {
+      lookup.openFile(card.id);
+      return true;
+    }
     return false;
   }
 
@@ -685,6 +717,34 @@ function Workbench() {
     }
     loadJson(json, null, true);
     showToast(`„${file.name}“ geladen – mit „Speichern unter“ sichern`);
+  }
+
+  function openTrash() {
+    setFileOpen(false);
+    void api.trashList().then(setTrash, () => setTrash([]));
+  }
+
+  async function restoreFromTrash(entry: TrashEntry) {
+    const taken = await api.trashTake(entry.id);
+    if (!taken.ok) {
+      setBanner(taken.error);
+      openTrash();
+      return;
+    }
+    try {
+      const clip = JSON.parse(taken.clip) as Clip;
+      const center = placementRef.current?.center() ?? { x: 180, y: 140 };
+      const result = pasteClip(histRef.current.present, boardRef.current, clip, freeSpot({ x: center.x - 120, y: center.y - 80 }, { width: 240, height: 160 }, current.cards));
+      // Everything coming back from disk is checked like a file being opened.
+      if (!result.ok || !validateDocument(serializeDocument(result.doc)).ok) throw new Error('invalid');
+      commit(result.doc);
+      selectCards(result.cardIds);
+      showToast(`Wiederhergestellt: ${entry.title}`);
+    } catch {
+      setBanner('Dieser Eintrag konnte nicht wiederhergestellt werden.');
+      void api.trashAdd({ title: entry.title, count: entry.count, clip: taken.clip });
+    }
+    openTrash();
   }
 
   function refreshRecent() {
@@ -1002,6 +1062,25 @@ function Workbench() {
         if (result.ok) live(result.doc);
       },
       notify: (text) => showToast(text),
+      file: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        return card?.type === 'file' ? card : undefined;
+      },
+      openFile: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        if (card?.type !== 'file') return;
+        void api.openAttachment({ name: card.name, data: card.data }).then((result) => {
+          if (!result.ok) setBanner(result.error);
+        });
+      },
+      saveFile: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        if (card?.type !== 'file') return;
+        void api.saveAttachment({ name: card.name, data: card.data }).then((result) => {
+          if (!result.ok) setBanner(result.error);
+          else if (!result.canceled) showToast(`Gespeichert: ${result.fileName}`);
+        });
+      },
       table: (id) => {
         const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
         return card?.type === 'table' ? card : undefined;
@@ -1344,6 +1423,7 @@ function Workbench() {
                 <button type="button" onClick={() => void save(true)}>Speichern unter</button>
                 <button type="button" data-testid="export-png" onClick={() => void exportImage('png')}>Als Bild exportieren (PNG)</button>
                 <button type="button" data-testid="export-pdf" onClick={() => void exportImage('pdf')}>Als PDF exportieren</button>
+                <button type="button" data-testid="open-trash" onClick={openTrash}>Papierkorb…</button>
                 {recent.length > 0 ? <p className="menu-kicker">Zuletzt geöffnet</p> : null}
                 {recent.map((entry) => (
                   <button key={entry.path} type="button" className="recent-entry" data-testid="recent-entry" disabled={!entry.exists} title={entry.path} onClick={() => void openRecentBoard(entry)}>
@@ -1369,6 +1449,22 @@ function Workbench() {
           <button type="button" onClick={() => setRecovery(null)}>Verwerfen</button>
         </div>
       ) : null}
+      <input
+        ref={attachInput}
+        type="file"
+        multiple
+        hidden
+        data-testid="attach-input"
+        accept={Object.keys(ATTACHMENT_TYPES).map((ext) => `.${ext}`).join(',')}
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          event.target.value = '';
+          setMoreOpen(false);
+          if (files.length === 0) return;
+          const center = placementRef.current?.center() ?? { x: 180, y: 140 };
+          void addImageFiles(files, freeSpot({ x: center.x - 130, y: center.y - 46 }, { width: 260, height: 92 }, current.cards));
+        }}
+      />
       <div className="workspace">
         <aside className="toolbar" aria-label="Werkzeuge">
           <ToolButton id="tool-select" label="Auswahl" short="Auswahl" shortcut="V" pressed={tool === 'select'} onClick={() => chooseTool('select')}>
@@ -1444,6 +1540,9 @@ function Workbench() {
                     </button>
                   ))}
                 </div>
+                <button type="button" data-testid="more-attach" onClick={() => attachInput.current?.click()}>
+                  Datei anhängen
+                </button>
                 <button
                   type="button"
                   draggable
@@ -1682,6 +1781,37 @@ function Workbench() {
                     </button>
                   ))}
                 </div>
+              ) : null}
+            </div>
+          ) : null}
+          {trash ? (
+            <div className="search-panel trash-panel" role="dialog" aria-label="Papierkorb" data-testid="trash-panel">
+              <div className="trash-head">
+                <strong>Papierkorb</strong>
+                <button type="button" onClick={() => setTrash(null)} aria-label="Papierkorb schließen">✕</button>
+              </div>
+              <p className="search-meta">Gelöschte Karten bleiben 30 Tage hier, auch nach dem Schließen.</p>
+              {trash.length === 0 ? <p className="search-empty">Der Papierkorb ist leer.</p> : null}
+              <ul className="search-results">
+                {trash.map((entry) => (
+                  <li key={entry.id} className="trash-entry" data-testid="trash-entry">
+                    <span>
+                      <span>{entry.title || 'Ohne Titel'}</span>
+                      <span className="search-meta">
+                        {entry.count === 1 ? '1 Karte' : `${entry.count} Karten`} · {new Date(entry.at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
+                      </span>
+                    </span>
+                    <span className="trash-actions">
+                      <button type="button" data-testid="trash-restore" onClick={() => void restoreFromTrash(entry)}>Wiederherstellen</button>
+                      <button type="button" aria-label="Endgültig löschen" title="Endgültig löschen" onClick={() => void api.trashDelete(entry.id).then(openTrash)}>✕</button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {trash.length > 0 ? (
+                <button type="button" className="trash-empty" data-testid="trash-empty" onClick={() => void api.trashDelete('all').then(openTrash)}>
+                  Papierkorb leeren
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -1955,6 +2085,25 @@ function writePref(key: string, value: string) {
   } catch {
     // ignore: the preference simply is not remembered
   }
+}
+
+/** Short description of deleted cards for the trash list. */
+function trashTitle(clip: Clip, boardTitle: (id: string) => string): string {
+  for (const card of clip.cards) {
+    const text =
+      card.type === 'text' || card.type === 'shape' ? plain(card.text)
+      : card.type === 'todo' || card.type === 'column' ? card.title
+      : card.type === 'board' ? `Board „${boardTitle(card.boardId)}“`
+      : card.type === 'link' ? card.title || card.url
+      : card.type === 'file' ? card.name
+      : card.type === 'swatch' ? card.label || card.color
+      : card.type === 'image' ? 'Bild'
+      : card.type === 'sketch' ? 'Skizze'
+      : card.type === 'table' ? (card.rows[0] ?? []).filter(Boolean).join(' | ') || 'Tabelle'
+      : 'Sticker';
+    if (text.trim()) return text.trim().slice(0, 80);
+  }
+  return 'Karten';
 }
 
 function hasTextSelection(): boolean {

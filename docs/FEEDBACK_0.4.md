@@ -71,6 +71,16 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Neu eingebaut (siebter Schritt)
+
+Stand: 55 Unit-Tests und 43 Oberflächentests grün, zweimal hintereinander.
+
+| Bereich | Was jetzt geht |
+|---|---|
+| D2 Datei-Anhänge | PDF, Text, Markdown, CSV, RTF, Word, Excel, PowerPoint, OpenDocument, ZIP, MP3/WAV/M4A und MP4 lassen sich als Karte anhängen (hineinziehen, Strg+V oder „Mehr → Datei anhängen“, höchstens 10 MB). Die Karte zeigt Typ, Name und Größe. „Öffnen“ (oder Doppelklick) öffnet mit dem Standardprogramm, „Speichern…“ legt eine Kopie ab. **Programme, Skripte, Verknüpfungen, HTML, SVG und Office-Makroformate werden nie angenommen**, auch nicht aus einer geladenen Datei: Ein geteiltes Board kann nichts transportieren, das per Doppelklick Code ausführt. Der Hauptprozess prüft jeden Anhang vor dem Öffnen noch einmal und legt ihn in einen eigenen Temp-Ordner. Dateinamen werden von Pfadangaben befreit. Anhänge sind durchsuchbar. |
+| D3 Papierkorb | Gelöschte und ausgeschnittene Karten (auch ganze Unterboards mit Inhalt) landen im Papierkorb der App (Datei → Papierkorb…). Er überlebt das Schließen, behält Einträge 30 Tage (höchstens 50) und stellt sie in die Mitte des aktuellen Boards zurück. Was zurückkommt, wird wie eine geöffnete Datei vollständig geprüft. |
+| Schnelles Tippen | Der Puffer für früh getippte Buchstaben verlor in seltenen Fällen ein Zeichen (Leerzeichen). Behoben, 10 Wiederholungen ohne Fehler. |
+
 ### Neu eingebaut (sechster Schritt)
 
 Stand: 53 Unit-Tests und 41 Oberflächentests grün, zweimal hintereinander.
@@ -104,7 +114,7 @@ Stand: 50 Unit-Tests und 38 Oberflächentests grün, zweimal hintereinander.
 | „Mehr“-Menü | Zweispaltig, scrollt bei sehr kleinen Fenstern. |
 | Suche | Findet auch Formen und Farbfelder. |
 
-Noch offen: B3, B8, B10–B16, aus D Datei-Anhänge und ein Papierkorb über Sitzungen hinweg. Außerdem ein Test auf echter Windows-Hardware (Touchpad, Stift, 150 % Skalierung, Dateizuordnung im Explorer, SmartScreen).
+Noch offen: B3, B8, B10–B16 (Technik-Aufräumarbeiten) und ein Test auf echter Windows-Hardware (Touchpad, Stift, 150 % Skalierung, Dateizuordnung im Explorer, SmartScreen). Bekannte Kleinigkeit: Wer eine Löschung mit Rückgängig zurückholt, hat die Karte zusätzlich noch im Papierkorb.
 
 ## 0. Kurzfazit
 

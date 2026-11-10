@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeUrl, prepareDocumentForDisk } from '../shared/document';
+import { inspectAttachment } from '../shared/attachments';
+import { randomUUID } from 'node:crypto';
 import { isSafeRecoveryPath, RECOVERY_FILE_NAME } from '../shared/recovery';
 import { deleteBoardsMessage } from '../shared/gestures';
 import { inspectImageBytes } from '../shared/images';
@@ -240,12 +242,12 @@ function buildMenu(win: BrowserWindow): Menu {
 }
 
 /** Write next to the target and rename, so a crash or a full disk never leaves a half-written board. */
-async function writeAtomically(target: string, content: string): Promise<void> {
+async function writeAtomically(target: string, content: string | Buffer): Promise<void> {
   const temporary = `${target}.${process.pid}.tmp`;
   try {
     const handle = await fs.open(temporary, 'w');
     try {
-      await handle.writeFile(content, 'utf8');
+      await handle.writeFile(content);
       await handle.sync();
     } finally {
       await handle.close();
@@ -277,6 +279,40 @@ async function pngToPdf(dataUrl: string, size: { width: number; height: number }
   } finally {
     page.destroy();
   }
+}
+
+const TRASH_FILE = 'trash.json';
+const TRASH_MAX_ENTRIES = 50;
+const TRASH_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+const TRASH_MAX_BYTES = 60 * 1024 * 1024;
+
+type StoredTrash = { id: string; at: number; title: string; count: number; clip: string };
+
+async function readTrash(): Promise<StoredTrash[]> {
+  try {
+    const raw = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), TRASH_FILE), 'utf8')) as unknown;
+    if (!Array.isArray(raw)) return [];
+    const now = Date.now();
+    return raw.filter(
+      (item): item is StoredTrash =>
+        typeof item?.id === 'string' && typeof item.at === 'number' && now - item.at < TRASH_MAX_AGE &&
+        typeof item.title === 'string' && typeof item.count === 'number' && typeof item.clip === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function writeTrash(entries: StoredTrash[]): Promise<void> {
+  // Newest first; drop the oldest entries beyond the count and size limits.
+  const kept: StoredTrash[] = [];
+  let bytes = 0;
+  for (const entry of entries.slice(0, TRASH_MAX_ENTRIES)) {
+    bytes += entry.clip.length;
+    if (bytes > TRASH_MAX_BYTES) break;
+    kept.push(entry);
+  }
+  await writeAtomically(path.join(app.getPath('userData'), TRASH_FILE), JSON.stringify(kept));
 }
 
 const RECENT_FILE = 'recent-boards.json';
@@ -504,6 +540,84 @@ function registerIpc(): void {
     await fs.rm(target, { force: true });
     await fs.rm(`${target}.tmp`, { force: true });
     return { ok: true };
+  });
+
+  const attachmentFrom = (payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return null;
+    const { name, data } = payload as { name?: unknown; data?: unknown };
+    if (typeof name !== 'string' || typeof data !== 'string') return null;
+    const checked = inspectAttachment(name, data);
+    return checked.ok ? checked : null;
+  };
+
+  ipcMain.handle(Ipc.openAttachment, async (_event, payload: unknown) => {
+    // Checked again here: the type allow-list decides what may be handed to the system.
+    const file = attachmentFrom(payload);
+    if (!file) return { ok: false, error: 'Dieser Anhang kann nicht geöffnet werden.' };
+    const folder = path.join(app.getPath('temp'), 'FocusBoard', randomUUID());
+    const target = path.join(folder, file.name);
+    try {
+      await fs.mkdir(folder, { recursive: true });
+      await fs.writeFile(target, Buffer.from(file.data.slice(file.data.indexOf(',') + 1), 'base64'));
+      if (process.env.WHITEBOARD_E2E === '1') return { ok: true };
+      const error = await shell.openPath(target);
+      return error ? { ok: false, error: `Kein Programm zum Öffnen gefunden (${error}).` } : { ok: true };
+    } catch {
+      return { ok: false, error: 'Der Anhang konnte nicht geöffnet werden.' };
+    }
+  });
+
+  ipcMain.handle(Ipc.saveAttachment, async (_event, payload: unknown) => {
+    const win = mainWindow;
+    const file = attachmentFrom(payload);
+    if (!win || !file) return { ok: false, error: 'Dieser Anhang kann nicht gespeichert werden.' };
+    let target: string | null = null;
+    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_EXPORT) target = path.join(path.dirname(process.env.WHITEBOARD_E2E_EXPORT), file.name);
+    if (!target) {
+      const result = await dialog.showSaveDialog(win, {
+        title: 'Anhang speichern',
+        defaultPath: path.join(app.getPath('downloads'), file.name),
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
+      });
+      if (result.canceled || !result.filePath) return { ok: true, canceled: true };
+      target = result.filePath;
+    }
+    try {
+      await writeAtomically(target, Buffer.from(file.data.slice(file.data.indexOf(',') + 1), 'base64'));
+      return { ok: true, canceled: false, fileName: path.basename(target) };
+    } catch {
+      return { ok: false, error: 'Der Anhang konnte nicht gespeichert werden.' };
+    }
+  });
+
+  ipcMain.handle(Ipc.trashAdd, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return false;
+    const { title, count, clip } = payload as { title?: unknown; count?: unknown; clip?: unknown };
+    if (typeof title !== 'string' || typeof count !== 'number' || typeof clip !== 'string' || clip.length > 40 * 1024 * 1024) return false;
+    try {
+      const entries = await readTrash();
+      entries.unshift({ id: randomUUID(), at: Date.now(), title: title.slice(0, 120), count: Math.max(1, Math.round(count)), clip });
+      await writeTrash(entries);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle(Ipc.trashList, async () => (await readTrash()).map(({ id, at, title, count }) => ({ id, at, title, count })));
+
+  ipcMain.handle(Ipc.trashTake, async (_event, id: unknown) => {
+    const entries = await readTrash();
+    const entry = entries.find((item) => item.id === id);
+    if (!entry) return { ok: false, error: 'Dieser Eintrag ist nicht mehr im Papierkorb.' };
+    await writeTrash(entries.filter((item) => item.id !== id));
+    return { ok: true, clip: entry.clip };
+  });
+
+  ipcMain.handle(Ipc.trashDelete, async (_event, id: unknown) => {
+    const entries = await readTrash();
+    await writeTrash(id === 'all' ? [] : entries.filter((item) => item.id !== id));
+    return true;
   });
 
   ipcMain.handle(Ipc.takePendingOpen, async () => {
