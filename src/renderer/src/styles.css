@@ -25,7 +25,7 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #000000;
+  --canvas: #121212;
   --ink: #fff8ee;
   --muted: #d9cfc2;
   --chrome: #141414;
@@ -38,7 +38,8 @@
 
 * { box-sizing: border-box; }
 /* Short, calm feedback on controls only. The canvas, cards and lines never animate, so dragging stays exact. */
-button, .tool-label, .swatch, .search-results button, .context-menu button { transition: background-color 120ms ease, box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease; }
+/* No colour transitions: switching light/dark must be instant, never a half-faded unreadable frame. */
+button, .tool-label, .swatch, .search-results button, .context-menu button { transition: box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease; }
 button:active:not(:disabled) { transform: scale(0.97); }
 .context-menu, .more-pop, .menu-pop, .link-prompt, .search-panel, .toast { animation: pop-in 120ms ease-out; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
@@ -242,7 +243,7 @@ svg { width: 22px; height: 22px; display: block; }
 .todo-item.is-done { text-decoration: line-through; color: var(--muted); }
 .react-flow__viewport-portal { z-index: 3; }
 .line-layer { z-index: 3; position: absolute; inset: 0; overflow: visible; width: 4000px; height: 4000px; pointer-events: none; }
-.line-layer line { pointer-events: stroke; cursor: pointer; }
+.line-layer line, .line-layer path { pointer-events: stroke; cursor: pointer; }
 .insert-line { position: absolute; height: 3px; background: #241c14; pointer-events: none; z-index: 5; }
 html[data-theme="dark"] .card-todo { background: #161616; }
 html[data-theme="dark"] .insert-line { background: #fff; }
@@ -386,3 +387,45 @@ html[data-theme="dark"] .card-sketch { background: #161616; }
 .sketch-tools button:not(.swatch) { border: 1px solid var(--line); background: var(--chrome); border-radius: 9px; padding: 4px 8px; font-size: 13px; }
 .sketch-tools button[aria-pressed="true"]:not(.swatch), .sketch-tools .sketch-done { background: #ffe14a; color: #1a1408; }
 .react-flow__minimap svg { width: 200px; height: 150px; }
+
+.menu-kicker { margin: 4px 4px 0; font-size: 12px; color: var(--muted); }
+.menu-pop .recent-entry { text-align: left; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-pop { max-height: calc(100vh - 80px); overflow: auto; }
+.recent-start { margin-top: 20px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; align-items: stretch; min-width: 320px; }
+.empty-subtitle { font-weight: 600; color: var(--chrome-ink); }
+.recent-start button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--chrome); color: var(--chrome-ink); border-radius: 12px; padding: 8px 12px; }
+.recent-start button span { font-size: 12px; color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.exporting .zoom-dock, html.exporting .react-flow__minimap, html.exporting .color-bar, html.exporting .toast, html.exporting .react-flow__attribution, html.exporting .empty-hint, html.exporting .search-panel { visibility: hidden; }
+
+/* Dark theme: softer canvas and slightly calmer note colours, still clearly distinct. */
+:root[data-theme="dark"] .text-note:not(.is-editing), :root[data-theme="dark"] .menu-colors .swatch, :root[data-theme="dark"] .color-bar .swatch { filter: saturate(0.82) brightness(0.92); }
+.text-note[data-color="white"] { border: 1px solid var(--line); }
+.color-bar { flex-wrap: wrap; max-width: calc(100% - 32px); justify-content: center; }
+.menu-colors { flex-wrap: wrap; }
+
+.line-layer circle.line-bend { fill: #ffe14a; }
+
+.card-swatch { overflow: hidden; padding: 0; }
+.swatch-fill { flex: 1; min-height: 40px; border-radius: var(--radius) var(--radius) 0 0; }
+.swatch-meta, .swatch-edit { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
+.swatch-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swatch-hex { align-self: flex-start; border: 0; background: transparent; padding: 0; font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; color: var(--muted); text-decoration: underline dotted; }
+.swatch-edit { flex-direction: row; align-items: center; }
+.swatch-edit input[type="color"] { width: 36px; height: 30px; border: 0; padding: 0; background: transparent; }
+.swatch-edit .title-editor { font-size: 15px; min-width: 0; flex: 1; }
+.card-shape { background: transparent; box-shadow: none; align-items: center; justify-content: center; }
+.card-shape.is-selected { box-shadow: 0 0 0 2px var(--ink); }
+.shape-outline { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 6px 10px rgba(40, 24, 8, 0.14)); }
+.shape-text { position: relative; width: 72%; max-height: 80%; overflow: hidden; text-align: center; font-family: var(--hand); font-size: 18px; line-height: 1.25; white-space: pre-wrap; overflow-wrap: anywhere; }
+.shape-editor { border: 0; background: rgba(255, 255, 255, 0.55); border-radius: 8px; resize: none; color: inherit; height: 70%; }
+.more-pop .shape-row { display: flex; gap: 6px; }
+.more-pop .shape-row button { flex: 1; }
+
+/* More menu: two columns so it stays short enough for small windows; scrolls if it still does not fit. */
+.more-pop { display: grid; grid-template-columns: repeat(2, minmax(170px, 1fr)); align-items: start; gap: 10px; max-height: calc(100vh - 16px); overflow: auto; }
+.more-pop > [data-testid="more-board"] { grid-column: 1 / -1; }
+.more-pop .template-row { border-top: 0; padding-top: 0; }
+.more-pop .sticker-row { grid-column: 1 / -1; flex-wrap: wrap; }
+/* Keep the colour bar clear of the zoom dock in the bottom-right corner. */
+.color-bar { bottom: 84px; }
+.toast { bottom: 148px; }

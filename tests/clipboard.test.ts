@@ -164,3 +164,33 @@ describe('sketches', () => {
     expect(tamper((stroke) => stroke.points.push(0.5))).toBe(false);
   });
 });
+
+import { addShapeCard, addSwatchCard, setShapeText, updateSwatch } from '../src/shared/shapes';
+
+describe('shapes, swatches and curved lines', () => {
+  it('round-trips through the file format and rejects bad values', () => {
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addShapeCard(doc, 'rootboard', 'diamond', { x: 0, y: 0 }, 'purple'));
+    const shapeId = doc.boards[0]!.cards[0]!.id;
+    doc = docOf(setShapeText(doc, 'rootboard', shapeId, 'Entscheidung?'));
+    doc = docOf(addSwatchCard(doc, 'rootboard', { x: 300, y: 0 }));
+    const swatchId = doc.boards[0]!.cards[1]!.id;
+    doc = docOf(updateSwatch(doc, 'rootboard', swatchId, { color: '#FFAA00', label: 'Sonne' }));
+    expect(updateSwatch(doc, 'rootboard', swatchId, { color: 'red' }).ok).toBe(false);
+    doc = docOf(addCanvasLine(doc, 'rootboard', { kind: 'point', x: 0, y: 0 }, { kind: 'point', x: 100, y: 0 }, { id: 'curvedline1' }));
+    const json = serializeDocument(doc);
+    const loaded = validateDocument(json);
+    if (!loaded.ok) throw new Error(loaded.error);
+    expect(loaded.doc.boards[0]!.cards).toMatchObject([
+      { type: 'shape', shape: 'diamond', color: 'purple', text: 'Entscheidung?' },
+      { type: 'swatch', color: '#ffaa00', label: 'Sonne' },
+    ]);
+    const raw = JSON.parse(json);
+    raw.boards[0].cards[1].color = 'javascript:alert(1)';
+    expect(validateDocument(JSON.stringify(raw)).ok).toBe(false);
+    const bent = JSON.parse(json);
+    bent.boards[0].lines[0].bend = 40;
+    const curved = validateDocument(JSON.stringify(bent));
+    expect(curved.ok && curved.doc.boards[0]!.lines[0]!.bend).toBe(40);
+  });
+});

@@ -93,7 +93,7 @@ export function updateLine(
   doc: WhiteboardDocument,
   boardId: string,
   lineId: string,
-  patch: Partial<Pick<CanvasLine, 'color' | 'arrowhead' | 'source' | 'target'>>,
+  patch: Partial<Pick<CanvasLine, 'color' | 'arrowhead' | 'source' | 'target' | 'bend'>>,
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return { ok: false, error: MSG.missingBoard };
@@ -101,7 +101,13 @@ export function updateLine(
   const lines = board.lines.map((line) => {
     if (line.id !== lineId) return line;
     found = true;
-    return { ...line, ...patch };
+    const next = { ...line, ...patch };
+    if (next.bend !== undefined) {
+      const bend = Number.isFinite(next.bend) ? Math.max(-5000, Math.min(5000, next.bend)) : 0;
+      if (Math.abs(bend) < 4) delete next.bend;
+      else next.bend = Math.round(bend);
+    }
+    return next;
   });
   if (!found) return { ok: false, error: MSG.badLine };
   return { ok: true, doc: withBoard(doc, boardId, { ...board, lines }) };
@@ -119,6 +125,22 @@ export function lineUsesCard(line: CanvasLine, cardId: string): boolean {
     (line.source.kind === 'card' && line.source.cardId === cardId) ||
     (line.target.kind === 'card' && line.target.cardId === cardId)
   );
+}
+
+/** Control point of the quadratic curve so that the curve's middle passes `bend` units beside the chord. */
+export function curveControl(x1: number, y1: number, x2: number, y2: number, bend: number): { x: number; y: number } {
+  const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const nx = -(y2 - y1) / length;
+  const ny = (x2 - x1) / length;
+  return { x: (x1 + x2) / 2 + nx * bend * 2, y: (y1 + y2) / 2 + ny * bend * 2 };
+}
+
+/** Signed sideways distance of a point from the chord, used when the middle handle is dragged. */
+export function bendFromPoint(x1: number, y1: number, x2: number, y2: number, point: { x: number; y: number }): number {
+  const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const nx = -(y2 - y1) / length;
+  const ny = (x2 - x1) / length;
+  return (point.x - (x1 + x2) / 2) * nx + (point.y - (y1 + y2) / 2) * ny;
 }
 
 export { SIDES };

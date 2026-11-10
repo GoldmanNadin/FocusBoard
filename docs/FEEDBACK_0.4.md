@@ -71,9 +71,25 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
-Strg+Z in einer Notiz macht wie bisher nur Zeichen für Zeichen rückgängig (Verhalten von Chromium, war schon in 0.4.0 so). Das Board selbst bleibt davon unberührt. Das ist getestet.
+### Neu eingebaut (fünfter Schritt)
 
-Noch offen: B3, B8, B10–B16, aus C gebogene Linien, Hilfslinien, Notizfarben-Palette und dunkles Thema, und aus D Datei-Anhang, Startseite, Export, Formen, Farbfeld, Kommentar und Tabelle.
+Stand: 50 Unit-Tests und 38 Oberflächentests grün, zweimal hintereinander.
+
+| Bereich | Was jetzt geht |
+|---|---|
+| Strg+Z beim Schreiben | Der Notiz-Editor hat einen eigenen Verlauf, der Getipptes wortweise zusammenfasst (neuer Schritt bei Leerzeichen/Zeilenumbruch nach einem Wort oder nach einer Pause > 1 s). Strg+Y bzw. Strg+Umschalt+Z stellt wieder her. Vorher machte Strg+Z nur ein Zeichen rückgängig, auch in 0.4.0. |
+| Cursor beim Bearbeiten | Beim Öffnen einer bestehenden Notiz steht der Cursor am Textende. Vorher stand er am Anfang, neuer Text landete vorn. |
+| D3 Zuletzt geöffnet | Datei-Menü und leeres Hauptboard zeigen die zuletzt geöffneten oder gespeicherten Boards (bis zu 8, fehlende Dateien ausgegraut). Der Renderer kann nur Pfade öffnen, die der Hauptprozess selbst in diese Liste geschrieben hat. |
+| D3 Export | „Als Bild exportieren (PNG)“ im Datei-Menü: Das ganze Board wird eingepasst, Bedienelemente ausgeblendet, fotografiert und die vorige Ansicht wiederhergestellt. |
+| C6 Gebogene Linien | Eine markierte Linie hat in der Mitte einen gelben Griff. Ziehen biegt sie, Doppelklick macht sie wieder gerade, beides rückgängig machbar. Das Dateiformat speichert die Biegung als optionales `bend`. |
+| C2 Farben | Drei neue Notizfarben: Lila, Blau, Weiß (alle mit Lesekontrast > 4,5:1, getestet). Farbnamen sind deutsch. |
+| C10 Dunkles Thema | Fläche #121212 statt reinem Schwarz, Notizfarben im Dunkeln leicht gedämpft. Umschalten ist sofort und ohne halb-blasse Zwischenbilder. |
+| D2 Formen | Rechteck, Kreis und Raute unter „Mehr“ (klicken oder auf die Fläche ziehen), mit Text und Farbe. Linien docken an. |
+| D2 Farbfeld | Farbmuster mit Name und HEX-Wert, Farbe wählbar. Ein Klick auf den HEX-Wert kopiert ihn. |
+| „Mehr“-Menü | Zweispaltig, scrollt bei sehr kleinen Fenstern. |
+| Suche | Findet auch Formen und Farbfelder. |
+
+Noch offen: B3, B8, B10–B16, aus C Hilfslinien beim Ausrichten, aus D Datei-Anhang, Kommentar, Tabelle, Papierkorb, PDF-Export und Dateizuordnung (Doppelklick im Explorer). Außerdem ein Test auf echter Windows-Hardware.
 
 ## 0. Kurzfazit
 

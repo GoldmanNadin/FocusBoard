@@ -27,6 +27,8 @@ import { addLinkCard, copyCards, pasteClip, reorderCards, updateLink, type Clip 
 import { normalizeUrl } from '../../shared/document';
 import { searchDocument, type SearchHit } from '../../shared/search';
 import { addSketchCard, addStroke, removeLastStroke } from '../../shared/sketch';
+import { addShapeCard, addSwatchCard, setShapeText, updateSwatch } from '../../shared/shapes';
+import type { ShapeKind } from '../../shared/model';
 import { TEMPLATES, insertTemplate, type TemplateName } from '../../shared/templates';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
 import { serializeDocument, validateDocument } from '../../shared/document';
@@ -44,8 +46,9 @@ import {
   undoHistory,
   type History,
 } from '../../shared/history';
-import { NOTE_COLOR_ORDER } from '../../shared/limits';
+import { NOTE_COLOR_NAMES, NOTE_COLOR_ORDER, NOTE_COLORS } from '../../shared/limits';
 import type { LineAnchor, NoteColor, StickerKind, TextStyle, WhiteboardDocument } from '../../shared/model';
+import type { RecentBoard } from '../../shared/ipc';
 import { buildDemoDocument, drawSamplePng } from './demo';
 import { BoardCanvas, type PlacementApi } from './components/BoardCanvas';
 import type { CardLookup } from './components/cards';
@@ -118,6 +121,7 @@ function Workbench() {
   const [toast, setToast] = useState<Toast | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [recent, setRecent] = useState<RecentBoard[]>([]);
   const [showMiniMap, setShowMiniMap] = useState(() => readPref('focusboard-minimap') === '1');
   const [font, setFont] = useState<'hand' | 'clear'>(() => (readPref('focusboard-font') === 'clear' ? 'clear' : 'hand'));
   const [searchQuery, setSearchQuery] = useState('');
@@ -194,6 +198,7 @@ function Workbench() {
     if (!queryTheme && (stored === 'dark' || stored === 'light')) {
       setHist((history) => replacePresent(history, { ...history.present, theme: stored }));
     }
+    refreshRecent();
     void api.readRecovery().then((result) => {
       if (result.ok && !result.missing) setRecovery(result.json);
     });
@@ -491,6 +496,8 @@ function Workbench() {
         if (card.type === 'text') return [card.text];
         if (card.type === 'todo') return [card.title, ...card.items.map((item) => `${item.done ? '[x]' : '[ ]'} ${item.text}`)];
         if (card.type === 'link') return [card.url];
+        if (card.type === 'shape') return [card.text];
+        if (card.type === 'swatch') return [`${card.label} ${card.color.toUpperCase()}`.trim()];
         if (card.type === 'column') return [card.title];
         if (card.type === 'board') return [getBoard(histRef.current.present, card.boardId)?.title ?? ''];
         return [];
@@ -631,6 +638,47 @@ function Workbench() {
     return false;
   }
 
+  function refreshRecent() {
+    void api.listRecent().then(setRecent, () => setRecent([]));
+  }
+
+  async function openRecentBoard(entry: RecentBoard) {
+    setFileOpen(false);
+    if (!(await confirmIfDirty())) return;
+    const opened = await api.openRecent(entry.path);
+    if (!opened.ok) {
+      setBanner(opened.error);
+      refreshRecent();
+      return;
+    }
+    if (opened.canceled) return;
+    loadJson(opened.json, opened.fileName, false);
+    await api.clearRecovery();
+    refreshRecent();
+  }
+
+  async function exportImage() {
+    setFileOpen(false);
+    finishEdit();
+    const placement = placementRef.current;
+    const flow = document.querySelector('.react-flow');
+    if (!placement || !flow || current.cards.length === 0) {
+      setBanner('Auf diesem Board gibt es nichts zu exportieren.');
+      return;
+    }
+    selectCards([]);
+    setSelectedLine(null);
+    document.documentElement.classList.add('exporting');
+    const before = await placement.fitAll();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const rect = flow.getBoundingClientRect();
+    const result = await api.exportPng({ x: rect.left, y: rect.top, width: rect.width, height: rect.height, name: current.title });
+    document.documentElement.classList.remove('exporting');
+    placement.restore(before);
+    if (!result.ok) setBanner(result.error);
+    else if (!result.canceled) showToast(`Als Bild gespeichert: ${result.fileName}`);
+  }
+
   function jumpTo(hit: SearchHit) {
     finishEdit();
     if (hit.boardId !== boardRef.current) lookup.openBoard(hit.boardId);
@@ -670,6 +718,10 @@ function Workbench() {
       void addImage(point);
       return;
     }
+    if (name === 'swatch' || name === 'shape:rect' || name === 'shape:ellipse' || name === 'shape:diamond') {
+      addFromMore(name === 'swatch' ? 'swatch' : (name.slice('shape:'.length) as ShapeKind), point);
+      return;
+    }
     if (name.startsWith('sticker:')) {
       const kind = name.slice('sticker:'.length) as StickerKind;
       addStickerAt(kind, point);
@@ -677,6 +729,26 @@ function Workbench() {
     }
     if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line' || name === 'link' || name === 'subboard' || name === 'draw') {
       createAt(name, point);
+    }
+  }
+
+  /** Places a swatch or shape (from the More menu or by dragging it out) and opens it for editing. */
+  function addFromMore(kind: 'swatch' | ShapeKind, point?: { x: number; y: number }) {
+    setMoreOpen(false);
+    finishEdit();
+    const center = point ?? placementRef.current?.center() ?? { x: 180, y: 140 };
+    const at = point ?? { x: center.x - 90, y: center.y - 80 };
+    const result = kind === 'swatch' ? addSwatchCard(histRef.current.present, boardRef.current, at) : addShapeCard(histRef.current.present, boardRef.current, kind, at, noteColor);
+    if (!result.ok) {
+      setBanner(result.error);
+      return;
+    }
+    const created = getBoard(result.doc, boardRef.current)?.cards.at(-1);
+    const settled = created && point ? settleCardDrop(result.doc, boardRef.current, created.id, point) : result;
+    commit(settled.ok ? settled.doc : result.doc);
+    if (created) {
+      setFocusId(created.id);
+      beginEdit(created.id);
     }
   }
 
@@ -706,6 +778,7 @@ function Workbench() {
     setFileName(result.fileName);
     setSavedSig(contentSignature(histRef.current.present));
     setAutosavedAt(null);
+    if (saveAs || !fileName) refreshRecent();
     await api.clearRecovery();
     return true;
   }
@@ -853,6 +926,26 @@ function Workbench() {
         const result = deleteTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
         if (result.ok) commit(result.doc);
       },
+      swatch: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        return card?.type === 'swatch' ? card : undefined;
+      },
+      updateSwatch: (id, patch) => {
+        const result = updateSwatch(histRef.current.present, boardRef.current, id, patch);
+        if (result.ok) live(result.doc);
+      },
+      shape: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        return card?.type === 'shape' ? card : undefined;
+      },
+      commitShapeText: (id, text) => {
+        const result = setShapeText(histRef.current.present, boardRef.current, id, text);
+        if (result.ok) live(result.doc);
+      },
+      notify: (text) => showToast(text),
+      copyText: (text) => {
+        void api.copyText(text).then((ok) => showToast(ok ? `${text} kopiert` : 'Kopieren nicht möglich'));
+      },
       sketch: (id) => {
         const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
         return card?.type === 'sketch' ? card : undefined;
@@ -970,7 +1063,7 @@ function Workbench() {
         void newDocument();
       } else if (event.key === 'Enter' && selectedIds.length === 1) {
         const card = current.cards.find((item) => item.id === selectedIds[0]);
-        if (card && (card.type === 'text' || card.type === 'board')) beginEdit(card.id);
+        if (card && (card.type === 'text' || card.type === 'board' || card.type === 'shape' || card.type === 'swatch' || card.type === 'sketch')) beginEdit(card.id);
       }
     };
     const onCopy = (event: ClipboardEvent) => {
@@ -1076,7 +1169,7 @@ function Workbench() {
   }, [api]);
 
   const crumbs = breadcrumb(doc, current.id);
-  const selectedNote = current.cards.some((card) => selectedIds.includes(card.id) && card.type === 'text' && card.style === 'note');
+  const selectedNote = current.cards.some((card) => selectedIds.includes(card.id) && ((card.type === 'text' && card.style === 'note') || card.type === 'shape'));
 
   return (
     <div className="app">
@@ -1155,7 +1248,7 @@ function Workbench() {
             {doc.theme === 'dark' ? 'Hell' : 'Dunkel'}
           </button>
           <div className="menu">
-            <button type="button" data-testid="file-menu" aria-expanded={fileOpen} onClick={() => { setFileOpen((open) => !open); setMoreOpen(false); }}>
+            <button type="button" data-testid="file-menu" aria-expanded={fileOpen} onClick={() => { setFileOpen((open) => !open); setMoreOpen(false); refreshRecent(); }}>
               Datei
             </button>
             {fileOpen ? (
@@ -1164,6 +1257,13 @@ function Workbench() {
                 <button type="button" onClick={() => void openDocument()}>Öffnen</button>
                 <button type="button" onClick={() => void save(false)}>Speichern</button>
                 <button type="button" onClick={() => void save(true)}>Speichern unter</button>
+                <button type="button" data-testid="export-png" onClick={() => void exportImage()}>Als Bild exportieren (PNG)</button>
+                {recent.length > 0 ? <p className="menu-kicker">Zuletzt geöffnet</p> : null}
+                {recent.map((entry) => (
+                  <button key={entry.path} type="button" className="recent-entry" data-testid="recent-entry" disabled={!entry.exists} title={entry.path} onClick={() => void openRecentBoard(entry)}>
+                    {entry.name}
+                  </button>
+                ))}
               </div>
             ) : null}
           </div>
@@ -1226,7 +1326,7 @@ function Workbench() {
             onClick={(event) => {
               // The menu is fixed to the window so the scrolling toolbar cannot clip it.
               const rect = event.currentTarget.getBoundingClientRect();
-              const top = Math.max(8, Math.min(rect.top, window.innerHeight - 320));
+              const top = Math.max(8, Math.min(rect.top, window.innerHeight - 280));
               setMorePos({ left: rect.right + 8, top });
               setMoreOpen((open) => !open);
             }}
@@ -1236,6 +1336,38 @@ function Workbench() {
           {moreOpen ? (
             <div className="more-pop" role="menu" data-testid="more-menu" style={morePos ?? undefined}>
               <button type="button" data-testid="more-board" onClick={() => { chooseTool('subboard'); }}>Unterboard</button>
+              <div className="template-row">
+                <p>Formen und Farbe</p>
+                <div className="shape-row">
+                  {([
+                    ['rect', '▭', 'Rechteck'],
+                    ['ellipse', '◯', 'Kreis'],
+                    ['diamond', '◇', 'Raute'],
+                  ] as const).map(([shape, glyph, name]) => (
+                    <button
+                      key={shape}
+                      type="button"
+                      draggable
+                      data-testid={`shape-${shape}`}
+                      aria-label={name}
+                      title={name}
+                      onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', `shape:${shape}`)}
+                      onClick={() => addFromMore(shape)}
+                    >
+                      {glyph}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  draggable
+                  data-testid="more-swatch"
+                  onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', 'swatch')}
+                  onClick={() => addFromMore('swatch')}
+                >
+                  Farbfeld
+                </button>
+              </div>
               <div className="template-row">
                 <p>Vorlage einfügen</p>
                 {TEMPLATES.map((template) => (
@@ -1348,6 +1480,10 @@ function Workbench() {
             onSelectLine={setSelectedLine}
             onDrawLine={drawLine}
             onLineEndpoint={moveLineEnd}
+            onLineBend={(lineId, bend) => {
+              const result = updateLine(histRef.current.present, current.id, lineId, { bend });
+              if (result.ok && !sameContent(result.doc, histRef.current.present)) commit(result.doc);
+            }}
             centerRequest={centerRequest}
             showMiniMap={showMiniMap}
             onToggleMiniMap={() => setShowMiniMap((value) => !value)}
@@ -1368,6 +1504,7 @@ function Workbench() {
                 selected: line.id === selectedLine,
                 sourceKind: line.source.kind,
                 targetKind: line.target.kind,
+                bend: line.bend ?? 0,
               }];
             })}
           />
@@ -1378,7 +1515,7 @@ function Workbench() {
                   key={color}
                   type="button"
                   data-testid={`line-color-${color}`}
-                  aria-label={color}
+                  aria-label={color === 'ink' ? 'Schwarz' : COLOR_NAMES[color]}
                   className="swatch"
                   style={{ background: color === 'ink' ? '#241c14' : colorFill(color) }}
                   onClick={() => {
@@ -1409,7 +1546,7 @@ function Workbench() {
                   key={color}
                   type="button"
                   data-testid={`color-${color}`}
-                  aria-label={color}
+                  aria-label={COLOR_NAMES[color]}
                   className="swatch"
                   style={{ background: colorFill(color) }}
                   onClick={() => {
@@ -1427,6 +1564,17 @@ function Workbench() {
               <p>Doppelklick auf die Fläche legt eine Notiz an.</p>
               <p>Werkzeuge links anklicken oder auf die Fläche ziehen.</p>
               <p>Bilder aus dem Explorer hineinziehen oder mit Strg+V einfügen.</p>
+              {current.id === doc.rootBoardId && recent.some((entry) => entry.exists) ? (
+                <div className="recent-start" data-testid="recent-start">
+                  <p className="empty-subtitle">Zuletzt geöffnet</p>
+                  {recent.filter((entry) => entry.exists).slice(0, 5).map((entry) => (
+                    <button key={entry.path} type="button" data-testid="recent-start-entry" title={entry.path} onClick={() => void openRecentBoard(entry)}>
+                      <strong>{entry.name}</strong>
+                      <span>{entry.folder}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
           {searchOpen ? (
@@ -1620,7 +1768,7 @@ function ContextMenu({
   }, [onClose]);
   const cards = board.cards.filter((card) => state.ids.includes(card.id));
   const single = cards.length === 1 ? cards[0] : undefined;
-  const notes = cards.some((card) => card.type === 'text' && card.style === 'note');
+  const notes = cards.some((card) => (card.type === 'text' && card.style === 'note') || card.type === 'shape');
   const left = Math.min(state.screen.x, window.innerWidth - 230);
   const top = Math.min(state.screen.y, window.innerHeight - (state.target.kind === 'card' ? 380 : 190));
   const item = (action: MenuAction, label: string, hint?: string) => (
@@ -1633,7 +1781,7 @@ function ContextMenu({
     <div className="context-menu" role="menu" data-testid="context-menu" ref={ref} style={{ left: Math.max(4, left), top: Math.max(4, top) }}>
       {state.target.kind === 'card' ? (
         <>
-          {single && (single.type === 'text' || single.type === 'board' || single.type === 'link') ? item('edit', single.type === 'board' ? 'Umbenennen' : 'Bearbeiten', 'F2') : null}
+          {single && ['text', 'board', 'link', 'shape', 'swatch', 'sketch'].includes(single.type) ? item('edit', single.type === 'board' ? 'Umbenennen' : 'Bearbeiten', 'F2') : null}
           {single?.type === 'board' ? item('open', 'Öffnen') : null}
           {single?.type === 'link' ? item('open', 'Im Browser öffnen') : null}
           {notes ? (
@@ -1664,7 +1812,7 @@ function ContextMenu({
   );
 }
 
-const COLOR_NAMES: Record<NoteColor, string> = { yellow: 'Gelb', pink: 'Rosa', turquoise: 'Türkis', green: 'Grün', orange: 'Orange' };
+const COLOR_NAMES: Record<NoteColor, string> = NOTE_COLOR_NAMES;
 
 function readAsDataUrl(file: File): Promise<string | null> {
   return new Promise((resolve) => {
@@ -1792,9 +1940,5 @@ function rawVersion(json: string): number | null {
 }
 
 function colorFill(color: NoteColor): string {
-  if (color === 'yellow') return '#FFE14A';
-  if (color === 'pink') return '#FF8FBE';
-  if (color === 'turquoise') return '#3DDECE';
-  if (color === 'green') return '#7DDE55';
-  return '#FF9A2E';
+  return NOTE_COLORS[color].fill;
 }

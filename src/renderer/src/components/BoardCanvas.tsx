@@ -20,8 +20,9 @@ import { MAX_ZOOM, MIN_ZOOM, NOTE_COLORS } from '../../../shared/limits';
 import type { Board } from '../../../shared/model';
 import { toEdges, toNodes } from '../flow';
 import { columnAtPoint, insertionIndex } from '../../../shared/columns';
+import { bendFromPoint, curveControl } from '../../../shared/lines';
 import { COLUMN_GAP, COLUMN_HEADER, COLUMN_PAD } from '../../../shared/limits';
-import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, SketchCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
+import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
 
 const nodeTypes = {
   textCard: TextCardNode,
@@ -32,10 +33,15 @@ const nodeTypes = {
   todoCard: TodoCardNode,
   linkCard: LinkCardNode,
   sketchCard: SketchCardNode,
+  swatchCard: SwatchCardNode,
+  shapeCard: ShapeCardNode,
 };
 
 export type PlacementApi = {
   center: () => { x: number; y: number };
+  /** Fits every card into view and returns the viewport to restore afterwards. */
+  fitAll: () => Promise<Viewport>;
+  restore: (viewport: Viewport) => void;
 };
 
 export function BoardCanvas(props: {
@@ -61,7 +67,7 @@ export function BoardCanvas(props: {
   onSelection: (ids: string[]) => void;
   onDropTool: (tool: string, point: { x: number; y: number }) => void;
   onLinePoint: (point: { x: number; y: number }) => void;
-  lines: { id: string; x1: number; y1: number; x2: number; y2: number; color: string; colorName: string; arrowhead: boolean; selected: boolean; sourceKind: string; targetKind: string }[];
+  lines: { id: string; x1: number; y1: number; x2: number; y2: number; color: string; colorName: string; arrowhead: boolean; selected: boolean; sourceKind: string; targetKind: string; bend: number }[];
   onSelectLine: (id: string | null) => void;
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
@@ -70,6 +76,7 @@ export function BoardCanvas(props: {
   onOpenCard?: (id: string) => boolean;
   onPointer?: (point: { x: number; y: number }) => void;
   onLineEndpoint?: (lineId: string, end: 'source' | 'target', point: { x: number; y: number }) => void;
+  onLineBend?: (lineId: string, bend: number) => void;
   centerRequest?: { token: number; x: number; y: number };
   showMiniMap?: boolean;
   onToggleMiniMap?: () => void;
@@ -146,7 +153,7 @@ function FlowSurface(props: {
   onSelection: (ids: string[]) => void;
   onDropTool: (tool: string, point: { x: number; y: number }) => void;
   onLinePoint: (point: { x: number; y: number }) => void;
-  lines: { id: string; x1: number; y1: number; x2: number; y2: number; color: string; colorName: string; arrowhead: boolean; selected: boolean; sourceKind: string; targetKind: string }[];
+  lines: { id: string; x1: number; y1: number; x2: number; y2: number; color: string; colorName: string; arrowhead: boolean; selected: boolean; sourceKind: string; targetKind: string; bend: number }[];
   onSelectLine: (id: string | null) => void;
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
@@ -155,6 +162,7 @@ function FlowSurface(props: {
   onOpenCard?: (id: string) => boolean;
   onPointer?: (point: { x: number; y: number }) => void;
   onLineEndpoint?: (lineId: string, end: 'source' | 'target', point: { x: number; y: number }) => void;
+  onLineBend?: (lineId: string, bend: number) => void;
   centerRequest?: { token: number; x: number; y: number };
   showMiniMap?: boolean;
   onToggleMiniMap?: () => void;
@@ -166,6 +174,22 @@ function FlowSurface(props: {
   const columnOrigin = useRef<{ id: string; x: number; y: number; children: { id: string; x: number; y: number }[] } | null>(null);
   const [hint, setHint] = useState<{ x: number; y: number; w: number } | null>(null);
   const [endDrag, setEndDrag] = useState<{ lineId: string; end: 'source' | 'target'; x: number; y: number } | null>(null);
+  const [bendDrag, setBendDrag] = useState<{ lineId: string; bend: number } | null>(null);
+
+  function startBendDrag(event: ReactPointerEvent, line: { id: string; x1: number; y1: number; x2: number; y2: number }) {
+    event.preventDefault();
+    event.stopPropagation();
+    const bendAt = (next: PointerEvent) => bendFromPoint(line.x1, line.y1, line.x2, line.y2, rf.screenToFlowPosition({ x: next.clientX, y: next.clientY }));
+    const move = (next: PointerEvent) => setBendDrag({ lineId: line.id, bend: bendAt(next) });
+    const up = (next: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setBendDrag(null);
+      props.onLineBend?.(line.id, bendAt(next));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
 
   useEffect(() => {
     const request = props.centerRequest;
@@ -207,6 +231,14 @@ function FlowSurface(props: {
           bounds.width / 2,
           bounds.height / 2,
         );
+      },
+      async fitAll() {
+        const before = rf.getViewport();
+        await rf.fitView({ padding: 0.06, duration: 0 });
+        return before;
+      },
+      restore(viewport) {
+        void rf.setViewport(viewport, { duration: 0 });
       },
     };
     return () => {
@@ -459,12 +491,16 @@ function FlowSurface(props: {
         {hint ? <div className="insert-line" style={{ left: hint.x, top: hint.y, width: hint.w }} /> : null}
         <svg className="line-layer">
           {props.lines.map((raw) => {
+            const shaped = bendDrag && bendDrag.lineId === raw.id ? { ...raw, bend: bendDrag.bend } : raw;
             const line =
               endDrag && endDrag.lineId === raw.id
                 ? endDrag.end === 'source'
-                  ? { ...raw, x1: endDrag.x, y1: endDrag.y }
-                  : { ...raw, x2: endDrag.x, y2: endDrag.y }
-                : raw;
+                  ? { ...shaped, x1: endDrag.x, y1: endDrag.y }
+                  : { ...shaped, x2: endDrag.x, y2: endDrag.y }
+                : shaped;
+            const control = curveControl(line.x1, line.y1, line.x2, line.y2, line.bend);
+            const d = line.bend ? `M ${line.x1} ${line.y1} Q ${control.x} ${control.y} ${line.x2} ${line.y2}` : `M ${line.x1} ${line.y1} L ${line.x2} ${line.y2}`;
+            const middle = { x: (line.x1 + 2 * control.x + line.x2) / 4, y: (line.y1 + 2 * control.y + line.y2) / 4 };
             return (
             <g
               key={line.id}
@@ -476,8 +512,8 @@ function FlowSurface(props: {
               data-selected={line.selected ? '1' : '0'}
               onClick={(event) => { event.stopPropagation(); props.onSelectLine(line.id); }}
             >
-              <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="transparent" strokeWidth={14} />
-              <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={line.color} strokeWidth={line.selected ? 4 : 2.5} markerEnd={line.arrowhead ? 'url(#arrow-head)' : undefined} />
+              <path d={d} stroke="transparent" strokeWidth={14} fill="none" />
+              <path d={d} data-line-path="1" stroke={line.color} strokeWidth={line.selected ? 4 : 2.5} fill="none" markerEnd={line.arrowhead ? 'url(#arrow-head)' : undefined} />
               {line.selected
                 ? (['source', 'target'] as const).map((end) => (
                     <circle
@@ -492,6 +528,23 @@ function FlowSurface(props: {
                     />
                   ))
                 : null}
+              {line.selected ? (
+                <circle
+                  className="line-end line-bend"
+                  data-testid="line-bend"
+                  cx={middle.x}
+                  cy={middle.y}
+                  r={6}
+                  onPointerDown={(event) => startBendDrag(event, line)}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    props.onLineBend?.(line.id, 0);
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <title>Ziehen biegt die Linie, Doppelklick macht sie gerade</title>
+                </circle>
+              ) : null}
             </g>
             );
           })}

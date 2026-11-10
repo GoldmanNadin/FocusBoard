@@ -219,7 +219,8 @@ test('docked and standalone lines, color, arrowhead and undo', async () => {
   await pane.click({ position: { x: rightBox.x - paneBounds.x - 4, y: rightBox.y - paneBounds.y + rightBox.height / 2 } });
   const docked = page.locator('[data-testid=canvas-line][data-source=card][data-target=card]');
   await expect(docked).toHaveCount(1);
-  const x1 = async () => Number(await docked.locator('line').nth(1).getAttribute('x1'));
+  // Lines are SVG paths ("M x y L …" or "M x y Q …"); the start x is the second token.
+  const x1 = async () => Number((await docked.locator('path[data-line-path]').getAttribute('d'))!.split(' ')[1]);
   const before = await x1();
   const drag = await left.boundingBox();
   if (!drag) throw new Error('Karte fehlt');

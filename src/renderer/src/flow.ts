@@ -24,7 +24,11 @@ export function toNodes(board: Board, editingId: string | null, focusId: string 
                   ? 'linkCard'
                   : card.type === 'sketch'
                     ? 'sketchCard'
-                    : 'boardCard',
+                    : card.type === 'swatch'
+                      ? 'swatchCard'
+                      : card.type === 'shape'
+                        ? 'shapeCard'
+                        : 'boardCard',
     hidden: board.cards.some((item) => item.type === 'column' && item.collapsed && item.childIds.includes(card.id)),
     zIndex: card.type === 'column' ? 0 : 2,
     dragHandle: card.type === 'column' ? '.column-handle' : undefined,

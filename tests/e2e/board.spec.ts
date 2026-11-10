@@ -98,7 +98,7 @@ test('note typing, drag undo, editor drag, wheel, colors, theme, fit, sticker, a
   await page.getByTestId('zoom-fit').click();
   await expect(page.locator('.card-copy', { hasText: 'Hallo Äpfel' })).toBeVisible();
   await page.getByTestId('theme-toggle').click();
-  await expect.poll(async () => page.locator('.react-flow').evaluate((element) => getComputedStyle(element).backgroundColor)).toBe('rgb(0, 0, 0)');
+  await expect.poll(async () => page.locator('.react-flow').evaluate((element) => getComputedStyle(element).backgroundColor)).toBe('rgb(18, 18, 18)');
 
   await page.getByTestId('tool-more').click();
   await page.getByTestId('sticker-star').click();

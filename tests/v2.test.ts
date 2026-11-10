@@ -83,8 +83,8 @@ describe('v2 acceptance', () => {
     }
   });
 
-  it('keeps five post-it colors above the body contrast threshold', () => {
-    expect(NOTE_COLOR_ORDER).toHaveLength(5);
+  it('keeps every post-it color above the body contrast threshold', () => {
+    expect(NOTE_COLOR_ORDER).toHaveLength(8);
     for (const color of NOTE_COLOR_ORDER) {
       expect(contrast(NOTE_COLORS[color].ink, NOTE_COLORS[color].fill)).toBeGreaterThan(4.5);
     }

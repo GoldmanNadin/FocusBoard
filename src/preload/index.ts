@@ -5,6 +5,7 @@ import {
   type FixtureResult,
   type OpenResult,
   type PickImageResult,
+  type RecentBoard,
   type RecoveryReadResult,
   type RecoveryWriteResult,
   type SaveResult,
@@ -73,6 +74,18 @@ const api = {
   },
   clearRecovery(): Promise<{ ok: true }> {
     return ipcRenderer.invoke(Ipc.recoveryClear);
+  },
+  listRecent(): Promise<RecentBoard[]> {
+    return ipcRenderer.invoke(Ipc.recentList);
+  },
+  openRecent(filePath: string): Promise<OpenResult> {
+    return ipcRenderer.invoke(Ipc.recentOpen, typeof filePath === 'string' ? filePath : '');
+  },
+  exportPng(box: { x: number; y: number; width: number; height: number; name: string }): Promise<SaveResult> {
+    return ipcRenderer.invoke(Ipc.exportPng, box);
+  },
+  copyText(text: string): Promise<boolean> {
+    return ipcRenderer.invoke(Ipc.copyText, typeof text === 'string' ? text.slice(0, 10_000) : '');
   },
   openExternal(url: string): Promise<boolean> {
     return ipcRenderer.invoke(Ipc.openExternal, typeof url === 'string' ? url : '');

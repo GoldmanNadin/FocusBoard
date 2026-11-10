@@ -1,10 +1,10 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SKETCH_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
-import type { BoardCard, ImageCard, LineColor, LinkCard, SketchCard, SketchStroke, StickerCard, TextCard } from '../../../shared/model';
+import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import type { BoardCard, ImageCard, LineColor, LinkCard, ShapeCard, SketchCard, SketchStroke, StickerCard, SwatchCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
-import { renderCardText, wrapSelection } from '../markdown';
+import { renderCardText } from '../markdown';
 
 const sides = [
   ['top', Position.Top],
@@ -35,6 +35,12 @@ export type CardLookup = {
   fitTextHeight: (id: string, height: number) => void;
   link: (id: string) => LinkCard | undefined;
   sketch: (id: string) => SketchCard | undefined;
+  swatch: (id: string) => SwatchCard | undefined;
+  updateSwatch: (id: string, patch: { color?: string; label?: string }) => void;
+  shape: (id: string) => ShapeCard | undefined;
+  commitShapeText: (id: string, text: string) => void;
+  notify: (text: string) => void;
+  copyText: (text: string) => void;
   addStroke: (id: string, stroke: SketchStroke) => void;
   undoStroke: (id: string) => void;
   openLink: (url: string) => void;
@@ -67,6 +73,12 @@ let lookup: CardLookup = {
   fitTextHeight: () => undefined,
   link: () => undefined,
   sketch: () => undefined,
+  swatch: () => undefined,
+  updateSwatch: () => undefined,
+  shape: () => undefined,
+  commitShapeText: () => undefined,
+  notify: () => undefined,
+  copyText: () => undefined,
   addStroke: () => undefined,
   undoStroke: () => undefined,
   openLink: () => undefined,
@@ -104,6 +116,51 @@ function resizer(selected: boolean | undefined, min: { width: number; height: nu
   );
 }
 
+/**
+ * Undo history for the note editor. Typing is grouped into words: a new step starts with a space or
+ * line break typed after a word, or after a pause of more than a second, so Ctrl+Z removes whole words.
+ */
+type TextHistory = { past: { value: string; caret: number }[]; future: { value: string; caret: number }[]; current: string; caret: number; at: number };
+
+function createTextHistory(value: string): TextHistory {
+  return { past: [], future: [], current: value, caret: value.length, at: 0 };
+}
+
+function recordTyping(history: TextHistory, value: string, caret: number) {
+  if (value === history.current) return;
+  const now = Date.now();
+  const added = value.length > history.current.length ? value.slice(caret - (value.length - history.current.length), caret) : '';
+  // A space typed right after a word starts the next step, so undo removes " word" pieces.
+  const wordBoundary = /^\s$/.test(added) && /\S/.test(history.current.slice(history.caret - 1, history.caret));
+  const startStep = history.past.length === 0 || now - history.at > 1000 || wordBoundary || added.length !== 1;
+  if (startStep) history.past.push({ value: history.current, caret: history.caret });
+  if (history.past.length > 200) history.past.shift();
+  history.future = [];
+  history.current = value;
+  history.caret = caret;
+  history.at = now;
+}
+
+function undoTyping(history: TextHistory): { value: string; caret: number } | null {
+  const step = history.past.pop();
+  if (!step) return null;
+  history.future.push({ value: history.current, caret: history.caret });
+  history.current = step.value;
+  history.caret = step.caret;
+  history.at = 0;
+  return step;
+}
+
+function redoTyping(history: TextHistory): { value: string; caret: number } | null {
+  const step = history.future.pop();
+  if (!step) return null;
+  history.past.push({ value: history.current, caret: history.caret });
+  history.current = step.value;
+  history.caret = step.caret;
+  history.at = 0;
+  return step;
+}
+
 /** Width-only resizing for text cards: their height always follows the text. */
 function widthResizer(selected: boolean | undefined, minWidth: number) {
   if (!selected) return null;
@@ -126,6 +183,10 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
   const card = lookup.text(id);
   const [draft, setDraft] = useState(card?.text ?? '');
   const measureRef = useRef<HTMLDivElement>(null);
+  const typing = useRef(createTextHistory(card?.text ?? ''));
+  useEffect(() => {
+    if (data.editing) typing.current = createTextHistory(card?.text ?? '');
+  }, [data.editing]);
   useEffect(() => {
     if (!data.editing) setDraft(card?.text ?? '');
   }, [card?.text, data.editing]);
@@ -173,8 +234,16 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
           lang="de"
           aria-label={card.style === 'note' ? 'Notiztext' : 'Überschrift'}
           placeholder={card.style === 'note' ? 'Hier tippen …' : 'Überschrift'}
-          value={draft}
+          // Uncontrolled on purpose: React never writes into the field while typing, so the
+          // browser's own undo groups typing into words instead of single characters.
+          defaultValue={draft}
+          onFocus={(event) => {
+            // Continue writing at the end of the existing text, not in front of it.
+            const end = event.currentTarget.value.length;
+            event.currentTarget.setSelectionRange(end, end);
+          }}
           onChange={(event) => {
+            recordTyping(typing.current, event.target.value, event.target.selectionEnd);
             setDraft(event.target.value);
             lookup.commitText(id, event.target.value);
           }}
@@ -188,12 +257,29 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
               return;
             }
             const meta = event.ctrlKey || event.metaKey;
+            const key = event.key.toLowerCase();
+            if (meta && (key === 'z' || key === 'y')) {
+              event.preventDefault();
+              event.stopPropagation();
+              const step = key === 'y' || event.shiftKey ? redoTyping(typing.current) : undoTyping(typing.current);
+              if (step) {
+                const field = event.currentTarget;
+                field.value = step.value;
+                field.setSelectionRange(step.caret, step.caret);
+                setDraft(step.value);
+                lookup.commitText(id, step.value);
+              }
+              return;
+            }
             const marker = meta && event.key.toLowerCase() === 'b' ? '**' : meta && event.key.toLowerCase() === 'i' ? '*' : null;
             if (marker) {
               event.preventDefault();
-              const next = wrapSelection(event.currentTarget, marker);
-              setDraft(next);
-              lookup.commitText(id, next);
+              const field = event.currentTarget;
+              const { selectionStart: start, selectionEnd: end, value } = field;
+              const selected = value.slice(start, end);
+              // insertText keeps the change in the browser's undo history (Ctrl+Z removes the marks again).
+              document.execCommand('insertText', false, `${marker}${selected}${marker}`);
+              field.setSelectionRange(start + marker.length, start + marker.length + selected.length);
             }
           }}
         />
@@ -472,6 +558,8 @@ const PEN_COLORS: { color: LineColor; label: string; fill: string }[] = [
   { color: 'turquoise', label: 'Türkis', fill: NOTE_COLORS.turquoise.fill },
   { color: 'green', label: 'Grün', fill: NOTE_COLORS.green.fill },
   { color: 'yellow', label: 'Gelb', fill: NOTE_COLORS.yellow.fill },
+  { color: 'blue', label: 'Blau', fill: NOTE_COLORS.blue.fill },
+  { color: 'purple', label: 'Lila', fill: NOTE_COLORS.purple.fill },
 ];
 
 /** The pen survives between sketches, like a real pen on the desk. */
@@ -574,6 +662,98 @@ export function SketchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
           <button type="button" data-testid="sketch-done" className="sketch-done" onClick={() => lookup.finishEdit()}>Fertig</button>
         </div>
       ) : null}
+    </article>
+  );
+}
+
+export function SwatchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'swatchCard'>>) {
+  const card = lookup.swatch(id);
+  if (!card) return null;
+  const copy = () => {
+    lookup.copyText(card.color.toUpperCase());
+  };
+  return (
+    <article className={`card card-swatch${selected ? ' is-selected' : ''}${data.editing ? ' is-editing nodrag' : ''}`} data-color={card.color} data-column={card.columnId ?? ''}>
+      {resizer(selected && !data.editing, MIN_SWATCH_SIZE)}
+      <Handles visible={data.connect} />
+      <div className="swatch-fill" style={{ background: card.color }} />
+      {data.editing ? (
+        <div className="swatch-edit nodrag nopan">
+          <input
+            type="color"
+            aria-label="Farbe wählen"
+            data-role="card-editor"
+            value={card.color}
+            onChange={(event) => lookup.updateSwatch(id, { color: event.target.value })}
+          />
+          <input
+            className="title-editor"
+            data-testid="swatch-label"
+            data-role="card-editor"
+            autoFocus
+            aria-label="Name der Farbe"
+            placeholder="Name"
+            defaultValue={card.label}
+            onChange={(event) => lookup.updateSwatch(id, { label: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === 'Escape') {
+                event.preventDefault();
+                lookup.finishEdit();
+              }
+            }}
+          />
+        </div>
+      ) : (
+        <div className="swatch-meta">
+          {card.label ? <span className="swatch-label">{card.label}</span> : null}
+          <button type="button" className="nodrag nopan swatch-hex" data-testid="swatch-hex" title="HEX-Wert kopieren" onClick={copy}>
+            {card.color.toUpperCase()}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function shapeOutline(shape: ShapeCard['shape']) {
+  if (shape === 'ellipse') return <ellipse cx="50" cy="50" rx="49" ry="49" />;
+  if (shape === 'diamond') return <polygon points="50,1 99,50 50,99 1,50" />;
+  return <rect x="1" y="1" width="98" height="98" rx="10" ry="10" />;
+}
+
+export function ShapeCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'shapeCard'>>) {
+  const card = lookup.shape(id);
+  if (!card) return null;
+  const color = NOTE_COLORS[card.color];
+  return (
+    <article className={`card card-shape shape-${card.shape}${selected ? ' is-selected' : ''}${data.editing ? ' is-editing nodrag' : ''}`} data-shape={card.shape} data-color={card.color} data-column={card.columnId ?? ''} style={{ color: color.ink }}>
+      {resizer(selected && !data.editing, MIN_SHAPE_SIZE)}
+      <Handles visible={data.connect} />
+      <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style={{ fill: color.fill }}>
+        {shapeOutline(card.shape)}
+      </svg>
+      {data.editing ? (
+        <textarea
+          className="nodrag nopan nowheel shape-text shape-editor"
+          data-testid="shape-editor"
+          data-role="card-editor"
+          autoFocus
+          aria-label="Text in der Form"
+          placeholder="Text"
+          defaultValue={card.text}
+          onChange={(event) => lookup.commitShapeText(id, event.target.value)}
+          onBlur={() => lookup.finishEdit()}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      ) : (
+        <div className="shape-text">{card.text}</div>
+      )}
     </article>
   );
 }

@@ -100,7 +100,7 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
   const x = numberIn(value.x, -COORD_LIMIT, COORD_LIMIT);
   const y = numberIn(value.y, -COORD_LIMIT, COORD_LIMIT);
   if (x == null || y == null) return null;
-  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch') {
+  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch' && type !== 'swatch' && type !== 'shape') {
     return null;
   }
   const min = minSizeFor(type);
@@ -149,6 +149,18 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
         })
       : [];
     return { id, type: 'todo', x, y, width, height, title, items, columnId: readColumnId(value.columnId) };
+  }
+  if (type === 'swatch') {
+    if (typeof value.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(value.color)) return null;
+    const label = typeof value.label === 'string' ? value.label.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 80) : '';
+    return { id, type: 'swatch', x, y, width, height, color: value.color.toLowerCase(), label, columnId: readColumnId(value.columnId) };
+  }
+  if (type === 'shape') {
+    const shape = value.shape === 'rect' || value.shape === 'ellipse' || value.shape === 'diamond' ? value.shape : null;
+    if (!shape || typeof value.text !== 'string' || codePointLength(value.text) > MAX_TEXT_LENGTH) return null;
+    const color = readNoteColor(value.color, 'note') ?? 'yellow';
+    const text = value.text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    return { id, type: 'shape', x, y, width, height, shape, color, text, columnId: readColumnId(value.columnId) };
   }
   if (type === 'sketch') {
     const strokes = readStrokes(value.strokes);
@@ -309,6 +321,9 @@ function readLine(value: unknown, cardIds: Set<string>, ids: Set<string>): Canva
     target,
     color: color as CanvasLine['color'],
     arrowhead: value.arrowhead !== false,
+    ...(typeof value.bend === 'number' && Number.isFinite(value.bend) && value.bend !== 0
+      ? { bend: Math.max(-5000, Math.min(5000, value.bend)) }
+      : {}),
   };
 }
 

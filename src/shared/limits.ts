@@ -26,6 +26,8 @@ export const MIN_COLUMN_SIZE = { width: 180, height: 56 };
 export const MIN_TODO_SIZE = { width: 180, height: 96 };
 export const MIN_LINK_SIZE = { width: 180, height: 112 };
 export const MIN_SKETCH_SIZE = { width: 120, height: 90 };
+export const MIN_SWATCH_SIZE = { width: 110, height: 120 };
+export const MIN_SHAPE_SIZE = { width: 60, height: 48 };
 export const MAX_SKETCH_STROKES = 400;
 export const MAX_SKETCH_POINTS = 40_000;
 export const MAX_URL_LENGTH = 2000;
@@ -40,6 +42,8 @@ export const DEFAULT_COLUMN_SIZE = { width: 260, height: 88 };
 export const DEFAULT_TODO_SIZE = { width: 240, height: 176 };
 export const DEFAULT_LINK_SIZE = { width: 260, height: 124 };
 export const DEFAULT_SKETCH_SIZE = { width: 360, height: 270 };
+export const DEFAULT_SWATCH_SIZE = { width: 160, height: 180 };
+export const DEFAULT_SHAPE_SIZE = { width: 200, height: 140 };
 export const COLUMN_HEADER = 48;
 export const COLUMN_PAD = 8;
 export const COLUMN_GAP = 8;
@@ -50,9 +54,22 @@ export const NOTE_COLORS = {
   turquoise: { fill: '#3DDECE', ink: '#042421' },
   green: { fill: '#7DDE55', ink: '#102408' },
   orange: { fill: '#FF9A2E', ink: '#2A1200' },
+  white: { fill: '#FFFFFF', ink: '#1A1408' },
+  blue: { fill: '#8EC5FF', ink: '#061A33' },
+  purple: { fill: '#C9A7FF', ink: '#1E0C3D' },
 } as const;
 
-export const NOTE_COLOR_ORDER = ['yellow', 'pink', 'turquoise', 'green', 'orange'] as const;
+export const NOTE_COLOR_ORDER = ['yellow', 'orange', 'pink', 'purple', 'blue', 'turquoise', 'green', 'white'] as const;
+export const NOTE_COLOR_NAMES = {
+  yellow: 'Gelb',
+  orange: 'Orange',
+  pink: 'Rosa',
+  purple: 'Lila',
+  blue: 'Blau',
+  turquoise: 'Türkis',
+  green: 'Grün',
+  white: 'Weiß',
+} as const;
 export const STICKER_KINDS = ['star', 'heart', 'thumbs', 'smiley', 'arrow'] as const;
 
 export const MSG = {
@@ -92,7 +109,7 @@ export const MSG = {
   nothingToPaste: 'In der Zwischenablage ist nichts, das eingefügt werden kann.',
 } as const;
 
-export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link' | 'sketch';
+export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link' | 'sketch' | 'swatch' | 'shape';
 
 export function minSizeFor(type: CardTypeName): { width: number; height: number } {
   if (type === 'text') return MIN_TEXT_SIZE;
@@ -102,6 +119,8 @@ export function minSizeFor(type: CardTypeName): { width: number; height: number 
   if (type === 'todo') return MIN_TODO_SIZE;
   if (type === 'link') return MIN_LINK_SIZE;
   if (type === 'sketch') return MIN_SKETCH_SIZE;
+  if (type === 'swatch') return MIN_SWATCH_SIZE;
+  if (type === 'shape') return MIN_SHAPE_SIZE;
   return MIN_BOARD_SIZE;
 }
 
@@ -113,5 +132,7 @@ export function defaultSizeFor(type: CardTypeName): { width: number; height: num
   if (type === 'todo') return DEFAULT_TODO_SIZE;
   if (type === 'link') return DEFAULT_LINK_SIZE;
   if (type === 'sketch') return DEFAULT_SKETCH_SIZE;
+  if (type === 'swatch') return DEFAULT_SWATCH_SIZE;
+  if (type === 'shape') return DEFAULT_SHAPE_SIZE;
   return DEFAULT_BOARD_SIZE;
 }

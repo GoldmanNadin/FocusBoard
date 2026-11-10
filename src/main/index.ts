@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -257,6 +257,39 @@ async function writeAtomically(target: string, content: string): Promise<void> {
   }
 }
 
+const RECENT_FILE = 'recent-boards.json';
+const MAX_RECENT = 8;
+
+async function readRecent(): Promise<{ path: string; at: number }[]> {
+  try {
+    const raw = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), RECENT_FILE), 'utf8')) as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item): item is { path: string; at: number } => typeof item?.path === 'string' && path.isAbsolute(item.path) && typeof item.at === 'number')
+      .slice(0, MAX_RECENT);
+  } catch {
+    return [];
+  }
+}
+
+async function rememberRecent(filePath: string): Promise<void> {
+  const list = (await readRecent()).filter((item) => item.path !== filePath);
+  list.unshift({ path: filePath, at: Date.now() });
+  try {
+    await writeAtomically(path.join(app.getPath('userData'), RECENT_FILE), JSON.stringify(list.slice(0, MAX_RECENT)));
+  } catch {
+    // the list is a convenience; never fail a save because of it
+  }
+}
+
+async function readBoardFile(filePath: string) {
+  const stat = await fs.stat(filePath);
+  if (!stat.isFile()) return { ok: false as const, error: MSG.invalidDoc };
+  if (stat.size > MAX_DOCUMENT_BYTES) return { ok: false as const, error: MSG.fileTooBig };
+  const json = await fs.readFile(filePath, 'utf8');
+  return prepareDocumentForDisk(json);
+}
+
 function ensureJson(filePath: string): string {
   return filePath.toLowerCase().endsWith('.json') ? filePath : `${filePath}.json`;
 }
@@ -293,6 +326,7 @@ function registerIpc(): void {
       return { ok: false, error: MSG.saveFailed };
     }
     currentPath = target;
+    await rememberRecent(target);
     return { ok: true, canceled: false, fileName: path.basename(target) };
   });
 
@@ -314,6 +348,7 @@ function registerIpc(): void {
       const prepared = prepareDocumentForDisk(json);
       if (!prepared.ok) return prepared;
       currentPath = filePath;
+      await rememberRecent(filePath);
       return { ok: true, canceled: false, fileName: path.basename(filePath), json: prepared.json };
     } catch {
       return { ok: false, error: MSG.invalidDoc };
@@ -429,6 +464,70 @@ function registerIpc(): void {
     await fs.rm(target, { force: true });
     await fs.rm(`${target}.tmp`, { force: true });
     return { ok: true };
+  });
+
+  ipcMain.handle(Ipc.recentList, async () => {
+    const list = await readRecent();
+    return Promise.all(
+      list.map(async (item) => ({
+        path: item.path,
+        name: path.basename(item.path),
+        folder: path.dirname(item.path),
+        at: item.at,
+        exists: await fs.stat(item.path).then((stat) => stat.isFile(), () => false),
+      })),
+    );
+  });
+
+  ipcMain.handle(Ipc.recentOpen, async (_event, payload: unknown) => {
+    // Only paths the main process itself put on the list can be opened this way.
+    const list = await readRecent();
+    const entry = list.find((item) => item.path === payload);
+    if (!entry) return { ok: false, error: MSG.invalidDoc };
+    try {
+      const prepared = await readBoardFile(entry.path);
+      if (!prepared.ok) return prepared;
+      currentPath = entry.path;
+      await rememberRecent(entry.path);
+      return { ok: true, canceled: false, fileName: path.basename(entry.path), json: prepared.json };
+    } catch {
+      return { ok: false, error: 'Die Datei gibt es nicht mehr oder sie kann nicht gelesen werden.' };
+    }
+  });
+
+  ipcMain.handle(Ipc.exportPng, async (_event, payload: unknown) => {
+    const win = mainWindow;
+    if (!win || !payload || typeof payload !== 'object') return { ok: false, error: 'Export nicht möglich.' };
+    const box = payload as Record<string, unknown>;
+    const nums = ['x', 'y', 'width', 'height'].map((key) => Number(box[key]));
+    if (nums.some((value) => !Number.isFinite(value)) || nums[2]! < 10 || nums[3]! < 10) return { ok: false, error: 'Export nicht möglich.' };
+    const [x, y, width, height] = nums.map((value) => Math.round(value)) as [number, number, number, number];
+    const image = await win.webContents.capturePage({ x, y, width, height });
+    let target: string | null = null;
+    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_EXPORT) target = process.env.WHITEBOARD_E2E_EXPORT;
+    if (!target) {
+      const base = typeof box.name === 'string' ? box.name.replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) : '';
+      const result = await dialog.showSaveDialog(win, {
+        title: 'Board als Bild speichern',
+        defaultPath: path.join(app.getPath('pictures'), `${base || 'Board'}.png`),
+        filters: [{ name: 'PNG-Bild', extensions: ['png'] }],
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
+      });
+      if (result.canceled || !result.filePath) return { ok: true, canceled: true };
+      target = result.filePath.toLowerCase().endsWith('.png') ? result.filePath : `${result.filePath}.png`;
+    }
+    try {
+      await fs.writeFile(target, image.toPNG());
+      return { ok: true, canceled: false, fileName: path.basename(target) };
+    } catch {
+      return { ok: false, error: 'Das Bild konnte nicht gespeichert werden.' };
+    }
+  });
+
+  ipcMain.handle(Ipc.copyText, async (_event, payload: unknown) => {
+    if (typeof payload !== 'string' || payload.length > 10_000) return false;
+    clipboard.writeText(payload);
+    return true;
   });
 
   ipcMain.handle(Ipc.openExternal, async (_event, payload: unknown) => {

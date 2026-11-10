@@ -20,6 +20,10 @@ export const Ipc = {
   e2eFixture: 'e2e:fixture',
   openExternal: 'link:open',
   menuCommand: 'menu:command',
+  recentList: 'recent:list',
+  recentOpen: 'recent:open',
+  exportPng: 'export:png',
+  copyText: 'clipboard:copy-text',
 } as const;
 
 export type SaveResult =
@@ -49,6 +53,8 @@ export type RecoveryReadResult =
   | { ok: false; error: string };
 
 export type RecoveryWriteResult = { ok: true } | { ok: false; error: string };
+
+export type RecentBoard = { path: string; name: string; folder: string; at: number; exists: boolean };
 
 export type FixtureResult =
   | { ok: true; missing: true }

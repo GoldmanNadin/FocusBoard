@@ -40,6 +40,22 @@ export type SketchCard = Placed & {
   strokes: SketchStroke[];
 };
 
+export type SwatchCard = Placed & {
+  type: 'swatch';
+  /** #rrggbb */
+  color: string;
+  label: string;
+};
+
+export type ShapeKind = 'rect' | 'ellipse' | 'diamond';
+
+export type ShapeCard = Placed & {
+  type: 'shape';
+  shape: ShapeKind;
+  color: NoteColor;
+  text: string;
+};
+
 export type ImageCard = Placed & {
   type: 'image';
   fileId: string;
@@ -79,7 +95,7 @@ export type ColumnCard = {
   childIds: string[];
 };
 
-export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard;
+export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard | SwatchCard | ShapeCard;
 
 export type LineColor = NoteColor | 'ink';
 
@@ -93,6 +109,8 @@ export type CanvasLine = {
   target: LineAnchor;
   color: LineColor;
   arrowhead: boolean;
+  /** Sideways offset of the curve's middle from the straight line, in board units; 0 or missing = straight. */
+  bend?: number;
 };
 
 export type Connector = {

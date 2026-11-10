@@ -230,11 +230,16 @@ test('Ctrl+Z inside a note undoes typing only, not board changes', async () => {
   const { app, page } = await launch();
   await addNote(page, 200, 150, 'Erste');
   await page.locator('.text-note').dblclick();
-  await page.keyboard.press('End');
-  await page.keyboard.type(' Zeile');
+  await expect(page.getByTestId('card-editor')).toBeFocused();
+  // The cursor starts at the end of the existing text.
+  await page.keyboard.type(' Zeile zwei');
   await page.keyboard.press('Control+Z');
-  // Chromium undoes the typing in the field; the board itself must stay untouched.
-  await expect(page.getByTestId('card-editor')).not.toHaveValue('Erste Zeile');
+  // Whole words are undone; the board itself stays untouched.
+  await expect(page.getByTestId('card-editor')).toHaveValue('Erste Zeile');
+  await page.keyboard.press('Control+Z');
+  await expect(page.getByTestId('card-editor')).toHaveValue('Erste');
+  await page.keyboard.press('Control+Y');
+  await expect(page.getByTestId('card-editor')).toHaveValue('Erste Zeile');
   await expect(page.getByTestId('card-editor')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.locator('.text-note')).toHaveCount(1);
@@ -397,5 +402,90 @@ test('draw a sketch with the pen, undo a stroke, finish with Escape', async () =
   await page.mouse.click(b.x + 500, b.y + 300);
   await page.mouse.click(b.x + 1000, b.y + 600);
   await expect(page.locator('.card-sketch')).toHaveCount(0);
+  await app.close();
+});
+
+test('export a board as PNG and reopen a recent board from the start screen', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-recent-'));
+  const target = path.join(userData, 'reise.json');
+  const picture = path.join(userData, 'board.png');
+  const env = { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData, WHITEBOARD_E2E_SAVE: target, WHITEBOARD_E2E_EXPORT: picture };
+  let app = await electron.launch({ args: ['.'], cwd: process.cwd(), env });
+  let page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  await addNote(page, 200, 150, 'Reiseplan');
+  await page.getByTestId('file-menu').click();
+  await page.getByTestId('export-png').click();
+  await expect(page.getByTestId('toast')).toContainText('board.png');
+  const png = readFileSync(picture);
+  expect(png.subarray(1, 4).toString()).toBe('PNG');
+  expect(png.length).toBeGreaterThan(2000);
+  await expect(page.getByTestId('zoom-dock')).toBeVisible();
+  await page.keyboard.press('Control+S');
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  await app.close();
+
+  app = await electron.launch({ args: ['.'], cwd: process.cwd(), env: { ...env, WHITEBOARD_E2E_SAVE: '' } });
+  page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  const banner = page.getByTestId('recovery-banner');
+  if (await banner.isVisible()) await banner.getByRole('button', { name: 'Verwerfen' }).click();
+  await expect(page.getByTestId('recent-start-entry')).toContainText('reise.json');
+  await page.getByTestId('recent-start-entry').click();
+  await expect(page.locator('.text-note', { hasText: 'Reiseplan' })).toBeVisible();
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  await app.close();
+});
+
+test('bend a line with its middle handle; double-click straightens it', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.getByTestId('tool-line').click();
+  await page.mouse.move(b.x + 150, b.y + 300);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 550, b.y + 300, { steps: 6 });
+  await page.mouse.up();
+  const line = page.getByTestId('canvas-line');
+  await line.click({ force: true });
+  const handle = (await page.getByTestId('line-bend').boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 120, { steps: 6 });
+  await page.mouse.up();
+  const d = () => line.locator('path[data-line-path]').getAttribute('d');
+  await expect.poll(d).toContain(' Q ');
+  await page.getByTestId('line-bend').dblclick();
+  await expect.poll(d).toContain(' L ');
+  await page.keyboard.press('Control+Z');
+  await expect.poll(d).toContain(' Q ');
+  await app.close();
+});
+
+test('shapes and colour swatches from the More menu', async () => {
+  const { app, page } = await launch();
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('shape-ellipse').click();
+  await page.getByTestId('shape-editor').fill('Ziel');
+  await page.keyboard.press('Escape');
+  const shape = page.locator('.card-shape');
+  await expect(shape).toHaveAttribute('data-shape', 'ellipse');
+  await expect(shape.locator('.shape-text')).toHaveText('Ziel');
+  await page.locator('.react-flow__node:has(.card-shape)').click();
+  await page.getByTestId('color-purple').click();
+  await expect(shape).toHaveAttribute('data-color', 'purple');
+
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('more-swatch').click();
+  await page.getByTestId('swatch-label').fill('Meerblau');
+  await page.keyboard.press('Enter');
+  const swatch = page.locator('.card-swatch');
+  await expect(swatch.locator('.swatch-label')).toHaveText('Meerblau');
+  await expect(page.getByTestId('swatch-hex')).toHaveText('#2F5D9B');
+  await page.getByTestId('swatch-hex').click();
+  await expect(page.getByTestId('toast')).toContainText('#2F5D9B');
+
+  await page.keyboard.press('Control+F');
+  await page.getByTestId('search-input').fill('meerblau');
+  await expect(page.getByTestId('search-hit')).toContainText('Farbe');
   await app.close();
 });

@@ -232,9 +232,12 @@ export function setNoteColors(
   const chosen = new Set(cardIds);
   let changed = false;
   const cards = board.cards.map((card) => {
-    if (!chosen.has(card.id) || card.type !== 'text' || card.style !== 'note' || card.color === color) return card;
-    changed = true;
-    return { ...card, color };
+    if (!chosen.has(card.id)) return card;
+    if ((card.type === 'shape' || (card.type === 'text' && card.style === 'note')) && card.color !== color) {
+      changed = true;
+      return { ...card, color };
+    }
+    return card;
   });
   if (!changed) return { ok: true, doc };
   return { ok: true, doc: withBoard(doc, boardId, { ...board, cards }) };
