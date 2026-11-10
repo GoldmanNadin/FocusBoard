@@ -71,6 +71,23 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Neu eingebaut (achter Schritt): Aufräumen und Gesamtprüfung
+
+Stand: 55 Unit-Tests und 46 Oberflächentests grün, zweimal hintereinander.
+
+| Punkt | Ergebnis |
+|---|---|
+| Papierkorb und Rückgängig | Wird eine Löschung mit Rückgängig zurückgeholt, verschwindet der Eintrag wieder aus dem Papierkorb. Wiederholen legt ihn erneut an. Keine Dubletten mehr. |
+| B3 | Die Sicherung im Datenordner schreibt frühestens 1,5 s nach der letzten Änderung (vorher 0,5 s). |
+| B8 | Mehrere ausgewählte Karten, die gemeinsam auf eine Spalte gezogen werden, landen alle darin (in ihrer Reihenfolge von oben nach unten). Gemeinsam herausgezogen verlassen sie die Spalte alle. |
+| B10 | Geprüft: bereits sicher. Der Hauptprozess validiert die Datei vollständig, bevor er sich ihren Pfad merkt. |
+| B11 | Toter Code in `loadJson` entfernt. |
+| B13 | Ungenutzte `SidePanel.tsx` gelöscht. |
+| Gesamtdurchlauf | Neuer Test „a long, realistic session“: Vorlage, Notiz mit Formatierung, Unterboard mit Link und Tabelle, Zeichnung, Kommentar, Form, Farbfeld, Anhang, Linie, Kopieren/Einfügen/Duplizieren/Löschen/Rückgängig/Wiederholen, Suche mit Sprung, Zoom, Thema, Schrift, Minikarte, Speichern, Export. Jede Fehlermeldung im Skript oder in der Konsole lässt den Test scheitern. Ergebnis: keine einzige. |
+| Windows-Build | `electron-builder --win --dir` baut `FocusBoard.exe` mit der neuen Dateizuordnung. Der NSIS-Installer braucht Wine und wurde hier nicht gebaut. |
+
+**Was ausdrücklich nicht geprüft werden konnte:** echte Windows-Hardware (Touchpad-Gesten, Stift, 150 % / 200 % Skalierung, mehrere Monitore), der Doppelklick auf eine `.focusboard`-Datei im Explorer nach der Installation, die SmartScreen-Warnung und das Öffnen von Anhängen mit echten Windows-Programmen. Dafür bitte die Checkliste in Abschnitt G auf einem Windows-PC durchgehen.
+
 ### Neu eingebaut (siebter Schritt)
 
 Stand: 55 Unit-Tests und 43 Oberflächentests grün, zweimal hintereinander.
@@ -114,7 +131,7 @@ Stand: 50 Unit-Tests und 38 Oberflächentests grün, zweimal hintereinander.
 | „Mehr“-Menü | Zweispaltig, scrollt bei sehr kleinen Fenstern. |
 | Suche | Findet auch Formen und Farbfelder. |
 
-Noch offen: B3, B8, B10–B16 (Technik-Aufräumarbeiten) und ein Test auf echter Windows-Hardware (Touchpad, Stift, 150 % Skalierung, Dateizuordnung im Explorer, SmartScreen). Bekannte Kleinigkeit: Wer eine Löschung mit Rückgängig zurückholt, hat die Karte zusätzlich noch im Papierkorb.
+Noch offen: B12 (globales `setCardLookup` durch einen Store ersetzen), B15 und B16 (reine Code-Pflege ohne sichtbare Fehler) und der Test auf echter Windows-Hardware.
 
 ## 0. Kurzfazit
 

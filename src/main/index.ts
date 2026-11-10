@@ -591,16 +591,17 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(Ipc.trashAdd, async (_event, payload: unknown) => {
-    if (!payload || typeof payload !== 'object') return false;
+    if (!payload || typeof payload !== 'object') return null;
     const { title, count, clip } = payload as { title?: unknown; count?: unknown; clip?: unknown };
-    if (typeof title !== 'string' || typeof count !== 'number' || typeof clip !== 'string' || clip.length > 40 * 1024 * 1024) return false;
+    if (typeof title !== 'string' || typeof count !== 'number' || typeof clip !== 'string' || clip.length > 40 * 1024 * 1024) return null;
     try {
       const entries = await readTrash();
-      entries.unshift({ id: randomUUID(), at: Date.now(), title: title.slice(0, 120), count: Math.max(1, Math.round(count)), clip });
+      const id = randomUUID();
+      entries.unshift({ id, at: Date.now(), title: title.slice(0, 120), count: Math.max(1, Math.round(count)), clip });
       await writeTrash(entries);
-      return true;
+      return id;
     } catch {
-      return false;
+      return null;
     }
   });
 

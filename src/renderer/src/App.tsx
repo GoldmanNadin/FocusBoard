@@ -132,6 +132,8 @@ function Workbench() {
   const [searchQuery, setSearchQuery] = useState('');
   const [centerRequest, setCenterRequest] = useState({ token: 0, x: 0, y: 0 });
   const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
+  /** The last deletion's trash entry, so undo can take it out of the trash again (and redo put it back). */
+  const lastTrash = useRef<{ id: string | null; clip: string; title: string; count: number; pastLength: number } | null>(null);
   const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const attachInput = useRef<HTMLInputElement>(null);
@@ -227,7 +229,7 @@ function Workbench() {
       void api.writeRecovery(serializeDocument(histRef.current.present)).then((result) => {
         if (result.ok) setAutosavedAt(new Date());
       });
-    }, 500);
+    }, 1500);
     return () => window.clearTimeout(timer);
   }, [api, doc, demo, dirty]);
 
@@ -252,6 +254,12 @@ function Workbench() {
   function undo() {
     if (editingRef.current) return;
     setToast(null);
+    // Undoing the deletion brings the cards back, so they must not stay in the trash as well.
+    const trashed = lastTrash.current;
+    if (trashed?.id && histRef.current.past.length === trashed.pastLength) {
+      void api.trashDelete(trashed.id);
+      trashed.id = null;
+    }
     const next = undoHistory(histRef.current);
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
     setHist(histRef.current);
@@ -262,6 +270,12 @@ function Workbench() {
 
   function redo() {
     if (editingRef.current) return;
+    const trashed = lastTrash.current;
+    if (trashed && !trashed.id && histRef.current.past.length === trashed.pastLength - 1 && histRef.current.future.length > 0) {
+      void api.trashAdd({ title: trashed.title, count: trashed.count, clip: trashed.clip }).then((id) => {
+        trashed.id = id;
+      });
+    }
     const next = redoHistory(histRef.current);
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
     setHist(histRef.current);
@@ -502,8 +516,19 @@ function Workbench() {
     }
     // Keep a copy in the app's trash so it can come back even after the program was closed.
     const clip = copyCards(histRef.current.present, board.id, present);
-    if (clip) void api.trashAdd({ title: trashTitle(clip, (id) => getBoard(histRef.current.present, id)?.title ?? ''), count: present.length, clip: JSON.stringify(clip) });
+    let entry: { id: string | null; clip: string; title: string; count: number; pastLength: number } | null = null;
+    if (clip) {
+      entry = { id: null, clip: JSON.stringify(clip), title: trashTitle(clip, (id) => getBoard(histRef.current.present, id)?.title ?? ''), count: present.length, pastLength: 0 };
+      const pending = entry;
+      void api.trashAdd({ title: pending.title, count: pending.count, clip: pending.clip }).then((id) => {
+        pending.id = id;
+      });
+    }
     commit(result.doc);
+    if (entry) {
+      entry.pastLength = histRef.current.past.length;
+      lastTrash.current = entry;
+    }
     setSelectedIds([]);
     showToast(present.length === 1 ? 'Karte gelöscht' : `${present.length} Karten gelöscht`, true);
     return present;
@@ -939,13 +964,8 @@ function Workbench() {
   }
 
   function loadJson(json: string, name: string | null, keepDirty: boolean) {
-    let theme = histRef.current.present.theme;
-    try {
-      const raw = JSON.parse(json) as { version?: number };
-      if (raw.version === 1) theme = histRef.current.present.theme;
-    } catch {
-      theme = histRef.current.present.theme;
-    }
+    // Version 1 files had no theme of their own; they keep the current one.
+    const theme = histRef.current.present.theme;
     const validated = validateDocument(json);
     if (!validated.ok) {
       setBanner(validated.error);
@@ -1642,6 +1662,24 @@ function Workbench() {
                 } else {
                   const settled = settleCardDrop(present, boardRef.current, id, pointer);
                   if (settled.ok) present = settled.doc;
+                  // Several selected cards dragged together all follow the dragged one into (or out of) a column.
+                  const moved = getBoard(present, boardRef.current);
+                  const lead = moved?.cards.find((item) => item.id === id);
+                  const others = selectedIds.filter((other) => other !== id);
+                  if (moved && lead && lead.type !== 'column' && others.length > 0) {
+                    const followers = moved.cards
+                      .filter((item) => others.includes(item.id) && item.type !== 'column')
+                      .sort((a, b) => a.y - b.y);
+                    for (const follower of followers) {
+                      const columnCard = lead.columnId ? getBoard(present, boardRef.current)?.cards.find((c) => c.id === lead.columnId) : undefined;
+                      // Into the lead's column (appended at the bottom, in their top-to-bottom order) or wherever they now lie.
+                      const point = columnCard
+                        ? { x: columnCard.x + columnCard.width / 2, y: columnCard.y + columnCard.height - 1 }
+                        : { x: follower.x + follower.width / 2, y: follower.y + follower.height / 2 };
+                      const placed = settleCardDrop(present, boardRef.current, follower.id, point);
+                      if (placed.ok) present = placed.doc;
+                    }
+                  }
                 }
                 histRef.current = endGesture(replacePresent(histRef.current, present), before, present, sameContent);
                 setHist(histRef.current);

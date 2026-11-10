@@ -671,3 +671,155 @@ test('deleted cards go to the trash and can be restored after a restart', async 
   await expect(page.locator('.search-empty')).toHaveText('Der Papierkorb ist leer.');
   await app.close();
 });
+
+test('undoing a deletion takes it out of the trash, redo puts it back', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Hin und her');
+  await page.locator('.react-flow__node:has(.text-note)').click();
+  await page.keyboard.press('Delete');
+  await expect(page.locator('.text-note')).toHaveCount(0);
+  const trashCount = async () => {
+    await page.getByTestId('file-menu').click();
+    await page.getByTestId('open-trash').click();
+    const count = await page.getByTestId('trash-entry').count();
+    await page.getByRole('button', { name: 'Papierkorb schließen' }).click();
+    return count;
+  };
+  await expect.poll(trashCount).toBe(1);
+  await page.keyboard.press('Control+Z');
+  await expect(page.locator('.text-note')).toHaveCount(1);
+  await expect.poll(trashCount).toBe(0);
+  await page.keyboard.press('Control+Y');
+  await expect(page.locator('.text-note')).toHaveCount(0);
+  await expect.poll(trashCount).toBe(1);
+  await app.close();
+});
+
+test('several selected cards dragged onto a column all go into it', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.getByTestId('tool-column').click();
+  await page.mouse.click(b.x + 700, b.y + 80);
+  await addNote(page, 100, 300, 'Eins');
+  await addNote(page, 100, 520, 'Zwei');
+  await page.locator('.react-flow__node:has(.text-note)').first().click();
+  await page.keyboard.down('Shift');
+  await page.locator('.react-flow__node:has(.text-note)').last().click();
+  await page.keyboard.up('Shift');
+  await expect(page.locator('.react-flow__node.selected')).toHaveCount(2);
+  const first = (await page.locator('.react-flow__node:has(.text-note)').first().boundingBox())!;
+  const column = (await page.locator('.react-flow__node:has(.card-column)').boundingBox())!;
+  await page.mouse.move(first.x + 30, first.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(first.x + 40, first.y + 30, { steps: 3 });
+  await page.mouse.move(column.x + column.width / 2, column.y + column.height - 10, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.text-note[data-column=""]')).toHaveCount(0);
+  await expect(page.locator('.card-column')).toHaveAttribute('data-children', /\S+ \S+/);
+  await app.close();
+});
+
+test('a long, realistic session runs without a single script error', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-journey-'));
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData, WHITEBOARD_E2E_SAVE: path.join(userData, 'reise.focusboard'), WHITEBOARD_E2E_EXPORT: path.join(userData, 'reise.png') },
+  });
+  const page = await app.firstWindow();
+  const problems: string[] = [];
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') problems.push(`console: ${message.text()}`);
+  });
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  const b = await pane(page);
+  const pick = async (testId: string) => {
+    await page.getByTestId('tool-more').click();
+    await page.getByTestId(testId).click();
+  };
+
+  // Plan a trip like a real user would.
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('template-kanban').click();
+  await page.keyboard.press('Escape');
+  await page.mouse.dblclick(b.x + 1000, b.y + 120);
+  await expect(page.getByTestId('card-editor')).toBeFocused();
+  await page.keyboard.type('# Packliste\n- Pass\n- **Ladekabel**');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('b');
+  await page.mouse.click(b.x + 1000, b.y + 420);
+  await page.keyboard.type('Unterkünfte');
+  await page.keyboard.press('Enter');
+  await page.locator('.react-flow__node:has(.card-board)').dblclick({ position: { x: 20, y: 20 } });
+  await page.keyboard.press('k');
+  await page.mouse.click(b.x + 200, b.y + 200);
+  await page.getByTestId('link-input').fill('www.example.com/hotel');
+  await page.keyboard.press('Enter');
+  await pick('more-table');
+  await page.keyboard.type('Hotel');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Preis');
+  await page.keyboard.press('Escape');
+  await page.getByTestId('brand-home').click();
+  await expect(page.locator('.crumb')).toHaveCount(1);
+
+  // Draw, comment, shape, swatch, attach, line.
+  await page.keyboard.press('p');
+  await page.mouse.click(b.x + 600, b.y + 450);
+  const surface = (await page.getByTestId('sketch-surface').boundingBox())!;
+  await page.mouse.move(surface.x + 20, surface.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(surface.x + 150, surface.y + 120, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.press('Escape');
+  await pick('more-comment');
+  await page.keyboard.type('Visum prüfen');
+  await page.keyboard.press('Escape');
+  await pick('shape-diamond');
+  await page.keyboard.type('Budget?');
+  await page.keyboard.press('Escape');
+  await pick('more-swatch');
+  await page.keyboard.press('Enter');
+  await dropFiles(page, [{ name: 'Buchung.pdf', text: '%PDF-1.4' }], b.x + 300, b.y + 600);
+  await page.getByTestId('tool-line').click();
+  await page.mouse.move(b.x + 120, b.y + 650);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 420, b.y + 700, { steps: 6 });
+  await page.mouse.up();
+
+  // Copy, paste, duplicate, delete, undo, redo, search, zoom, theme, font, minimap, save, export.
+  await page.locator('.react-flow__node:has(.text-note)').last().click();
+  await page.keyboard.press('Control+C');
+  await page.mouse.move(b.x + 900, b.y + 650);
+  await page.keyboard.press('Control+V');
+  await page.keyboard.press('Control+D');
+  await page.keyboard.press('Delete');
+  await page.keyboard.press('Control+Z');
+  await page.keyboard.press('Control+Y');
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+F');
+  await page.getByTestId('search-input').fill('hotel');
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Titel dieses Boards')).toHaveValue('Unterkünfte');
+  await page.keyboard.press('Escape');
+  await page.getByTestId('brand-home').click();
+  await page.getByTestId('zoom-fit').click();
+  await page.getByTestId('theme-toggle').click();
+  await page.getByTestId('font-toggle').click();
+  await page.getByTestId('minimap-toggle').click();
+  await page.keyboard.press('Control+S');
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  await page.getByTestId('file-menu').click();
+  await page.getByTestId('export-png').click();
+  await expect(page.getByTestId('toast')).toContainText('reise.png');
+
+  // The saved file opens again and is valid.
+  const saved = readFileSync(path.join(userData, 'reise.focusboard'), 'utf8');
+  expect(saved).toContain('Packliste');
+  expect(saved).toContain('Buchung.pdf');
+
+  expect(problems).toEqual([]);
+  await app.close();
+});

@@ -88,7 +88,7 @@ const api = {
   saveAttachment(file: { name: string; data: string }): Promise<SaveResult> {
     return ipcRenderer.invoke(Ipc.saveAttachment, file);
   },
-  trashAdd(entry: { title: string; count: number; clip: string }): Promise<boolean> {
+  trashAdd(entry: { title: string; count: number; clip: string }): Promise<string | null> {
     return ipcRenderer.invoke(Ipc.trashAdd, entry);
   },
   trashList(): Promise<TrashEntry[]> {
