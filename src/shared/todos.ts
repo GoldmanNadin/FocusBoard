@@ -1,4 +1,5 @@
 import { MSG } from './limits';
+import { relayoutColumn } from './columns';
 import type { Board, DocResult, TodoCard, TodoItem, WhiteboardDocument } from './model';
 
 function getBoard(doc: WhiteboardDocument, id: string): Board | undefined {
@@ -15,7 +16,13 @@ function todo(board: Board, cardId: string): TodoCard | undefined {
 }
 
 function replaceTodo(board: Board, next: TodoCard): Board {
-  return { ...board, cards: board.cards.map((card) => (card.id === next.id ? next : card)) };
+  const replaced = { ...board, cards: board.cards.map((card) => (card.id === next.id ? next : card)) };
+  return next.columnId ? relayoutColumn(replaced, next.columnId) : replaced;
+}
+
+/** Height that shows the title, the progress line and every item without clipping. */
+export function todoHeight(itemCount: number): number {
+  return 96 + Math.max(1, itemCount) * 32;
 }
 
 export function todoProgress(card: TodoCard): { done: number; total: number } {
@@ -52,7 +59,7 @@ export function addTodoItem(doc: WhiteboardDocument, boardId: string, cardId: st
   const items = card.items.slice();
   const index = afterId ? items.findIndex((entry) => entry.id === afterId) : items.length - 1;
   items.splice(index + 1, 0, item);
-  const height = Math.max(card.height, 88 + items.length * 36);
+  const height = Math.max(card.height, todoHeight(items.length));
   return { ok: true, doc: withBoard(doc, boardId, replaceTodo(board, { ...card, items, height })), itemId: item.id } as DocResult & {
     itemId?: string;
   };
@@ -70,8 +77,11 @@ export function deleteTodoItem(doc: WhiteboardDocument, boardId: string, cardId:
   const board = getBoard(doc, boardId);
   const card = board && todo(board, cardId);
   if (!board || !card) return { ok: false, error: MSG.missingBoard };
-  return {
-    ok: true,
-    doc: withBoard(doc, boardId, replaceTodo(board, { ...card, items: card.items.filter((item) => item.id !== itemId) })),
-  };
+  if (!card.items.some((item) => item.id === itemId)) return { ok: true, doc };
+  // The last item is only cleared, never removed: an empty list would have no field left to type in.
+  const items =
+    card.items.length <= 1
+      ? card.items.map((item) => ({ ...item, text: '', done: false }))
+      : card.items.filter((item) => item.id !== itemId);
+  return { ok: true, doc: withBoard(doc, boardId, replaceTodo(board, { ...card, items })) };
 }

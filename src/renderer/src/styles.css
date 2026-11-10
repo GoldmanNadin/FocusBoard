@@ -102,7 +102,7 @@ svg { width: 22px; height: 22px; display: block; }
   box-shadow: var(--shadow);
 }
 .menu-pop { right: 0; top: 42px; }
-.more-pop { left: 72px; bottom: 8px; }
+.more-pop { position: fixed; left: 80px; top: 120px; z-index: 20; }
 .workspace { flex: 1; display: flex; }
 .toolbar {
   width: 72px;
@@ -154,11 +154,17 @@ svg { width: 22px; height: 22px; display: block; }
 }
 .card.is-selected { box-shadow: 0 0 0 2px var(--ink), var(--shadow); }
 .text-note { font-family: var(--hand); }
+.app { user-select: none; }
+.card-editor, .app input, .app textarea { user-select: text; }
+.card-copy { overflow: hidden !important; }
+.card-copy.is-empty { opacity: 0.45; font-style: italic; }
+.card-measure { position: absolute; top: 0; left: 0; height: auto !important; flex: none; visibility: hidden; pointer-events: none; }
+.card-editor::placeholder, .todo-item::placeholder { color: inherit; opacity: 0.45; }
 .text-heading, .text-subheading { background: transparent; box-shadow: none; font-family: var(--hand); color: var(--ink); }
-.text-heading .card-copy, .text-heading .card-editor { font-size: 32px; line-height: 1.15; }
-.text-subheading .card-copy, .text-subheading .card-editor { font-size: 22px; line-height: 1.2; }
-.text-note .card-copy, .text-note .card-editor { font-size: 16px; line-height: 1.35; }
-.card-copy, .card-editor {
+.text-heading .card-copy, .text-heading .card-editor, .text-heading .card-measure { font-size: 32px; line-height: 1.15; }
+.text-subheading .card-copy, .text-subheading .card-editor, .text-subheading .card-measure { font-size: 22px; line-height: 1.2; }
+.text-note .card-copy, .text-note .card-editor, .text-note .card-measure { font-size: 16px; line-height: 1.35; }
+.card-copy, .card-editor, .card-measure {
   flex: 1;
   min-height: 0;
   margin: 8px;
@@ -223,7 +229,8 @@ svg { width: 22px; height: 22px; display: block; }
 .card-todo li { display: flex; gap: 8px; align-items: center; }
 .todo-item { flex: 1; border: 0; background: transparent; font: inherit; color: var(--ink); }
 .todo-item.is-done { text-decoration: line-through; color: var(--muted); }
-.line-layer { position: absolute; inset: 0; overflow: visible; width: 4000px; height: 4000px; pointer-events: none; }
+.react-flow__viewport-portal { z-index: 3; }
+.line-layer { z-index: 3; position: absolute; inset: 0; overflow: visible; width: 4000px; height: 4000px; pointer-events: none; }
 .line-layer line { pointer-events: stroke; cursor: pointer; }
 .insert-line { position: absolute; height: 3px; background: #241c14; pointer-events: none; z-index: 5; }
 html[data-theme="dark"] .card-todo { background: #161616; }
@@ -232,5 +239,5 @@ html[data-theme="dark"] .insert-line { background: #fff; }
 @media (max-width: 800px) {
   .workspace { flex-direction: column; }
   .toolbar { width: 100%; flex-direction: row; overflow: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-  .more-pop { left: 8px; bottom: auto; top: 64px; }
+  .more-pop { left: 8px !important; bottom: auto; top: 120px !important; }
 }

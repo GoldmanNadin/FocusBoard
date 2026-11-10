@@ -235,6 +235,24 @@ function buildMenu(win: BrowserWindow): Menu {
   ]);
 }
 
+/** Write next to the target and rename, so a crash or a full disk never leaves a half-written board. */
+async function writeAtomically(target: string, content: string): Promise<void> {
+  const temporary = `${target}.${process.pid}.tmp`;
+  try {
+    const handle = await fs.open(temporary, 'w');
+    try {
+      await handle.writeFile(content, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.rename(temporary, target);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 function ensureJson(filePath: string): string {
   return filePath.toLowerCase().endsWith('.json') ? filePath : `${filePath}.json`;
 }
@@ -266,7 +284,7 @@ function registerIpc(): void {
       target = ensureJson(result.filePath);
     }
     try {
-      await fs.writeFile(target, prepared.json, 'utf8');
+      await writeAtomically(target, prepared.json);
     } catch {
       return { ok: false, error: MSG.saveFailed };
     }
@@ -379,6 +397,9 @@ function registerIpc(): void {
       const json = await fs.readFile(target, 'utf8');
       const prepared = prepareDocumentForDisk(json);
       if (!prepared.ok) return { ok: true, missing: true };
+      // Keep a copy: the running session keeps autosaving into the same file while the
+      // restore prompt is still open, so the earlier session must survive elsewhere.
+      await fs.writeFile(`${target}.previous`, prepared.json, 'utf8').catch(() => undefined);
       return { ok: true, missing: false, json: prepared.json };
     } catch {
       return { ok: true, missing: true };

@@ -565,7 +565,10 @@ export function addColumn(
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return fail(MSG.missingBoard);
+  if (board.cards.length >= MAX_CARDS_PER_BOARD) return fail(MSG.tooManyCards);
   const size = defaultSizeFor('column');
+  const geometry = geometryError(position.x, position.y, size.width, size.height, 'column');
+  if (geometry) return fail(geometry);
   const cardId = takeId(ids?.cardId, usedIds(doc));
   if (!cardId) return fail(MSG.duplicateId);
   const card: ColumnCard = {
@@ -590,7 +593,10 @@ export function addTodoCard(
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return fail(MSG.missingBoard);
+  if (board.cards.length >= MAX_CARDS_PER_BOARD) return fail(MSG.tooManyCards);
   const size = defaultSizeFor('todo');
+  const geometry = geometryError(position.x, position.y, size.width, size.height, 'todo');
+  if (geometry) return fail(geometry);
   const cardId = takeId(ids?.cardId, usedIds(doc));
   if (!cardId) return fail(MSG.duplicateId);
   const card: TodoCard = {

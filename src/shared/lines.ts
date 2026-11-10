@@ -1,4 +1,4 @@
-import { MSG } from './limits';
+import { MAX_CONNECTORS_PER_BOARD, MSG } from './limits';
 import type { Board, CanvasLine, Card, DocResult, HandleSide, LineAnchor, LineColor, WhiteboardDocument } from './model';
 import { isColumn } from './columns';
 
@@ -72,6 +72,7 @@ export function addCanvasLine(
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return { ok: false, error: MSG.missingBoard };
+  if (board.lines.length >= MAX_CONNECTORS_PER_BOARD) return { ok: false, error: MSG.tooManyConnectors };
   if (!anchorPosition(source, board.cards) || !anchorPosition(target, board.cards)) {
     return { ok: false, error: MSG.badLine };
   }

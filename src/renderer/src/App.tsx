@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import {
   addColumn,
   addConnector,
@@ -94,7 +94,9 @@ function Workbench() {
   const [lineDraft, setLineDraft] = useState<LineAnchor | null>(null);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const [headerDraft, setHeaderDraft] = useState('Hauptboard');
-  const [autosaveLabel, setAutosaveLabel] = useState('');
+  const [autosavedAt, setAutosavedAt] = useState<Date | null>(null);
+  const [selectAllToken, setSelectAllToken] = useState(0);
+  const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
   const histRef = useRef(hist);
   histRef.current = hist;
   const boardRef = useRef(boardId);
@@ -104,10 +106,13 @@ function Workbench() {
   const dragBefore = useRef<WhiteboardDocument | null>(null);
   const editBefore = useRef<WhiteboardDocument | null>(null);
   const placementRef = useRef<PlacementApi | null>(null);
+  /** A text card created by the last click; it is discarded if it is left empty. */
+  const freshCard = useRef<{ id: string; pastLength: number } | null>(null);
   const current = getBoard(doc, boardId) ?? getBoard(doc, doc.rootBoardId)!;
   const baseline = useRef<string | null>(null);
   if (baseline.current === null) baseline.current = contentSignature(doc);
-  const dirty = contentSignature(doc) !== (savedSig ?? baseline.current);
+  const signature = useMemo(() => contentSignature(doc), [doc]);
+  const dirty = signature !== (savedSig ?? baseline.current);
 
   useEffect(() => {
     document.documentElement.dataset.theme = doc.theme;
@@ -156,14 +161,15 @@ function Workbench() {
   }, [api, demo, queryTheme]);
 
   useEffect(() => {
-    if (demo || recovery) return;
+    // Keeps running while the restore prompt is open: the main process kept a copy of the earlier session.
+    if (demo || !dirty) return;
     const timer = window.setTimeout(() => {
       void api.writeRecovery(serializeDocument(histRef.current.present)).then((result) => {
-        if (result.ok) setAutosaveLabel('Automatisch gesichert');
+        if (result.ok) setAutosavedAt(new Date());
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [api, doc, demo, recovery]);
+  }, [api, doc, demo, dirty]);
 
   function live(next: WhiteboardDocument) {
     histRef.current = replacePresent(histRef.current, next);
@@ -182,6 +188,7 @@ function Workbench() {
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
     setHist(histRef.current);
     setEditingId(null);
+    setSelectedLine(null);
     setSyncToken((value) => value + 1);
   }
 
@@ -190,11 +197,12 @@ function Workbench() {
     const next = redoHistory(histRef.current);
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
     setHist(histRef.current);
+    setSelectedLine(null);
     setSyncToken((value) => value + 1);
   }
 
   function beginEdit(id: string) {
-    if (!editBefore.current) editBefore.current = structuredClone(histRef.current.present);
+    if (!editBefore.current) editBefore.current = histRef.current.present;
     setEditingId(id);
     setTool('select');
     setSyncToken((value) => value + 1);
@@ -202,14 +210,46 @@ function Workbench() {
 
   function finishEdit() {
     const before = editBefore.current;
+    const editedId = editingRef.current;
+    const fresh = freshCard.current;
     editBefore.current = null;
+    freshCard.current = null;
     setEditingId(null);
     editingRef.current = null;
+    if (fresh && fresh.id === editedId && dropIfEmpty(fresh)) {
+      setSyncToken((value) => value + 1);
+      return;
+    }
     if (before) {
       histRef.current = endGesture(histRef.current, before, histRef.current.present, sameContent);
       setHist(histRef.current);
     }
     setSyncToken((value) => value + 1);
+  }
+
+  /** Removes a just-created text card that is still empty, as if it had never been placed. */
+  function dropIfEmpty(fresh: { id: string; pastLength: number }): boolean {
+    const present = histRef.current.present;
+    const board = getBoard(present, boardRef.current);
+    const card = board?.cards.find((item) => item.id === fresh.id);
+    if (!board || card?.type !== 'text' || card.text.trim() !== '') return false;
+    const removed = deleteCards(present, board.id, [card.id]);
+    if (!removed.ok) return false;
+    let next = removed.doc;
+    if (card.columnId) {
+      const after = getBoard(next, board.id);
+      if (after) next = { ...next, boards: next.boards.map((item) => (item.id === after.id ? relayoutColumn(after, card.columnId!) : item)) };
+    }
+    histRef.current = { past: histRef.current.past.slice(0, fresh.pastLength), present: next, future: [] };
+    setHist(histRef.current);
+    setFocusId(null);
+    return true;
+  }
+
+  function chooseTool(next: Tool) {
+    setTool(next);
+    setLineDraft(null);
+    setMoreOpen(false);
   }
 
   function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line', point: { x: number; y: number }) {
@@ -273,10 +313,13 @@ function Workbench() {
     const created = getBoard(result.doc, boardRef.current)?.cards.at(-1);
     const settled = created ? settleCardDrop(result.doc, boardRef.current, created.id, point) : result;
     const next = settled.ok ? settled.doc : result.doc;
+    if (editingRef.current) finishEdit();
+    const pastLength = histRef.current.past.length;
     commit(next);
     if (created) {
       setFocusId(created.id);
       beginEdit(created.id);
+      freshCard.current = { id: created.id, pastLength };
     }
   }
 
@@ -372,7 +415,7 @@ function Workbench() {
     if (result.canceled) return false;
     setFileName(result.fileName);
     setSavedSig(contentSignature(histRef.current.present));
-    setAutosaveLabel('Gespeichert');
+    setAutosavedAt(null);
     await api.clearRecovery();
     return true;
   }
@@ -392,6 +435,8 @@ function Workbench() {
     setSavedSig(contentSignature(next));
     setEditingId(null);
     setFocusId(null);
+    setSelectedLine(null);
+    setLineDraft(null);
     setSyncToken((value) => value + 1);
     await api.clearPath();
     await api.clearRecovery();
@@ -431,6 +476,8 @@ function Workbench() {
     setSavedSig(keepDirty ? null : contentSignature(next));
     setEditingId(null);
     setFocusId(null);
+    setSelectedLine(null);
+    setLineDraft(null);
     setSyncToken((value) => value + 1);
     document.documentElement.dataset.theme = next.theme;
   }
@@ -470,6 +517,8 @@ function Workbench() {
       openBoard: (id) => {
         finishEdit();
         setBoardId(id);
+        setSelectedLine(null);
+        setLineDraft(null);
         setTool('select');
         setSyncToken((value) => value + 1);
       },
@@ -504,16 +553,29 @@ function Workbench() {
       },
       addTodoAfter: (cardId, itemId) => {
         finishEdit();
-        const result = addTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
-        if (result.ok) commit(result.doc);
+        const result = addTodoItem(histRef.current.present, boardRef.current, cardId, itemId) as ReturnType<typeof addTodoItem> & { itemId?: string };
+        if (!result.ok) return null;
+        commit(result.doc);
+        return result.itemId ?? null;
       },
       deleteTodoItem: (cardId, itemId) => {
+        finishEdit();
         const result = deleteTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
         if (result.ok) commit(result.doc);
       },
+      fitTextHeight: (id, height) => {
+        const present = histRef.current.present;
+        const board = getBoard(present, boardRef.current);
+        const card = board?.cards.find((item) => item.id === id);
+        if (!board || !card || card.type !== 'text' || Math.abs(card.height - height) < 2) return;
+        const resized = resizeCards(present, board.id, [{ id, width: card.width, height }]);
+        if (!resized.ok) return;
+        live(withColumnsRelaid(resized.doc, board.id, [id]));
+        setSyncToken((value) => value + 1);
+      },
       startEdit: (id) => beginEdit(id),
       armGesture: () => {
-        if (!editBefore.current) editBefore.current = structuredClone(histRef.current.present);
+        if (!editBefore.current) editBefore.current = histRef.current.present;
       },
       zoom: () => getBoard(histRef.current.present, boardRef.current)?.viewport.zoom ?? 1,
       resizeColumnTo: (id, width) => {
@@ -525,20 +587,33 @@ function Workbench() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target;
-      const typing = target instanceof HTMLElement && target.dataset.role === 'card-editor';
+      const typing = isTypingTarget(event.target);
       if (event.key === 'Escape') {
         if (typing) return;
         setEditingId(null);
         editBefore.current = null;
         setTool('select');
         setLineDraft(null);
+        setSelectedLine(null);
         setMoreOpen(false);
         setFileOpen(false);
         return;
       }
       if (typing) return;
       const meta = event.ctrlKey || event.metaKey;
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLine) {
+        event.preventDefault();
+        const result = deleteLines(histRef.current.present, current.id, [selectedLine]);
+        if (result.ok) commit(result.doc);
+        setSelectedLine(null);
+        return;
+      }
+      if (meta && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        setSelectedLine(null);
+        setSelectAllToken((value) => value + 1);
+        return;
+      }
       if (meta && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault();
         undo();
@@ -611,6 +686,17 @@ function Workbench() {
                   aria-label="Titel dieses Boards"
                   value={headerDraft}
                   onChange={(event) => setHeaderDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setHeaderDraft(current.title);
+                      const input = event.currentTarget;
+                      window.setTimeout(() => input.blur(), 0);
+                    }
+                  }}
                   onBlur={() => {
                     const result = renameBoard(histRef.current.present, current.id, headerDraft);
                     if (result.ok && !sameContent(result.doc, histRef.current.present)) commit(result.doc);
@@ -633,7 +719,7 @@ function Workbench() {
           </button>
           <button type="button" data-testid="theme-toggle" aria-label={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'} onClick={() => {
             const result = setTheme(histRef.current.present, doc.theme === 'dark' ? 'light' : 'dark');
-            if (result.ok) commit(result.doc);
+            if (result.ok) live(result.doc);
           }}>
             {doc.theme === 'dark' ? 'Hell' : 'Dunkel'}
           </button>
@@ -650,7 +736,7 @@ function Workbench() {
               </div>
             ) : null}
           </div>
-          <span className="save-state">{dirty ? autosaveLabel || 'Ungespeichert' : 'Gespeichert'}</span>
+          <span className="save-state" data-testid="save-state">{saveStateLabel(dirty, fileName, autosavedAt)}</span>
         </div>
       </header>
       {banner ? (
@@ -663,41 +749,52 @@ function Workbench() {
         <div className="banner" role="status" data-testid="recovery-banner">
           <span>Es gibt eine automatisch gesicherte Sitzung. Die ursprüngliche Datei wurde nicht überschrieben.</span>
           <button type="button" data-testid="recovery-restore" onClick={() => { loadJson(recovery, null, true); setRecovery(null); }}>Wiederherstellen</button>
-          <button type="button" onClick={() => { setRecovery(null); void api.clearRecovery(); }}>Verwerfen</button>
+          <button type="button" onClick={() => setRecovery(null)}>Verwerfen</button>
         </div>
       ) : null}
       <div className="workspace">
         <aside className="toolbar" aria-label="Werkzeuge">
-          <ToolButton id="tool-select" label="Auswahl" pressed={tool === 'select'} onClick={() => { setTool('select'); setMoreOpen(false); }}>
+          <ToolButton id="tool-select" label="Auswahl" pressed={tool === 'select'} onClick={() => chooseTool('select')}>
             <IconSelect />
           </ToolButton>
-          <ToolButton id="tool-note" label="Notiz" pressed={tool === 'note'} onClick={() => { setTool('note'); setMoreOpen(false); }}>
+          <ToolButton id="tool-note" label="Notiz" pressed={tool === 'note'} onClick={() => chooseTool('note')}>
             <IconNote />
           </ToolButton>
-          <ToolButton id="tool-heading" label="Große Überschrift" pressed={tool === 'heading'} onClick={() => { setTool('heading'); setMoreOpen(false); }}>
+          <ToolButton id="tool-heading" label="Große Überschrift" pressed={tool === 'heading'} onClick={() => chooseTool('heading')}>
             <IconHeading />
           </ToolButton>
-          <ToolButton id="tool-subheading" label="Kleine Überschrift" pressed={tool === 'subheading'} onClick={() => { setTool('subheading'); setMoreOpen(false); }}>
+          <ToolButton id="tool-subheading" label="Kleine Überschrift" pressed={tool === 'subheading'} onClick={() => chooseTool('subheading')}>
             <IconSubheading />
           </ToolButton>
           <ToolButton id="tool-image" label="Bild" pressed={tool === 'image'} onClick={() => void addImage()}>
             <IconImage />
           </ToolButton>
-          <ToolButton id="tool-column" label="Spalte" pressed={tool === 'column'} onClick={() => { setTool('column'); setMoreOpen(false); }}>
+          <ToolButton id="tool-column" label="Spalte" pressed={tool === 'column'} onClick={() => chooseTool('column')}>
             <IconColumn />
           </ToolButton>
-          <ToolButton id="tool-todo" label="Aufgaben" pressed={tool === 'todo'} onClick={() => { setTool('todo'); setMoreOpen(false); }}>
+          <ToolButton id="tool-todo" label="Aufgaben" pressed={tool === 'todo'} onClick={() => chooseTool('todo')}>
             <IconTodo />
           </ToolButton>
-          <ToolButton id="tool-line" label="Linie" pressed={tool === 'line'} onClick={() => { setTool('line'); setLineDraft(null); setMoreOpen(false); }}>
+          <ToolButton id="tool-line" label="Linie" pressed={tool === 'line'} onClick={() => chooseTool('line')}>
             <IconArrow />
           </ToolButton>
-          <ToolButton id="tool-more" label="Mehr" pressed={moreOpen || tool === 'subboard'} onClick={() => setMoreOpen((open) => !open)}>
+          <ToolButton
+            id="tool-more"
+            label="Mehr"
+            pressed={moreOpen || tool === 'subboard'}
+            onClick={(event) => {
+              // The menu is fixed to the window so the scrolling toolbar cannot clip it.
+              const rect = event.currentTarget.getBoundingClientRect();
+              const top = Math.max(8, Math.min(rect.top, window.innerHeight - 140));
+              setMorePos({ left: rect.right + 8, top });
+              setMoreOpen((open) => !open);
+            }}
+          >
             <IconMore />
           </ToolButton>
           {moreOpen ? (
-            <div className="more-pop" role="menu" data-testid="more-menu">
-              <button type="button" data-testid="more-board" onClick={() => { setTool('subboard'); setMoreOpen(false); }}>Unterboard</button>
+            <div className="more-pop" role="menu" data-testid="more-menu" style={morePos ?? undefined}>
+              <button type="button" data-testid="more-board" onClick={() => { chooseTool('subboard'); }}>Unterboard</button>
               <div className="sticker-row">
                 {(['star', 'heart', 'thumbs', 'smiley', 'arrow'] as StickerKind[]).map((kind) => (
                   <button key={kind} type="button" draggable data-testid={`sticker-${kind}`} aria-label={kind} onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', `sticker:${kind}`)} onClick={() => addStickerAt(kind)}>
@@ -713,6 +810,7 @@ function Workbench() {
             key={current.id}
             board={current}
             syncToken={syncToken}
+            selectAllToken={selectAllToken}
             editingId={editingId}
             focusId={focusId}
             connect={false}
@@ -735,10 +833,10 @@ function Workbench() {
                 } else rest.push(update);
               }
               const result = rest.length > 0 ? resizeCards(present, current.id, rest) : { ok: true as const, doc: present };
-              if (result.ok) live(result.doc);
+              if (result.ok) live(withColumnsRelaid(result.doc, current.id, rest.map((update) => update.id)));
             }}
             onDragStart={() => {
-              dragBefore.current = structuredClone(histRef.current.present);
+              dragBefore.current = histRef.current.present;
             }}
             onDragStop={(id, pointer) => {
               const before = dragBefore.current;
@@ -876,7 +974,7 @@ function Workbench() {
   );
 }
 
-function ToolButton({ id, label, pressed, onClick, children }: { id: string; label: string; pressed: boolean; onClick: () => void; children: ReactNode }) {
+function ToolButton({ id, label, pressed, onClick, children }: { id: string; label: string; pressed: boolean; onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -901,6 +999,37 @@ function ToolButton({ id, label, pressed, onClick, children }: { id: string; lab
       {children}
     </button>
   );
+}
+
+/** True for any field where keys belong to the text, not to board shortcuts. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLInputElement) return !['checkbox', 'radio', 'button', 'range'].includes(target.type);
+  return target.dataset.role === 'card-editor';
+}
+
+function saveStateLabel(dirty: boolean, fileName: string | null, autosavedAt: Date | null): string {
+  if (!dirty) return fileName ? 'Alle Änderungen gespeichert' : 'Keine Änderungen';
+  const target = fileName ? 'Nicht in Datei gespeichert' : 'Noch nicht als Datei gespeichert';
+  if (!autosavedAt) return target;
+  const time = autosavedAt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return `${target} · Sicherung ${time}`;
+}
+
+/** Re-stacks every column that holds one of the given cards, so a taller card never overlaps the next one. */
+function withColumnsRelaid(doc: WhiteboardDocument, boardId: string, cardIds: string[]): WhiteboardDocument {
+  const board = getBoard(doc, boardId);
+  if (!board) return doc;
+  const columns = new Set<string>();
+  for (const card of board.cards) {
+    if (cardIds.includes(card.id) && card.type !== 'column' && card.columnId) columns.add(card.columnId);
+  }
+  if (columns.size === 0) return doc;
+  let next = board;
+  for (const columnId of columns) next = relayoutColumn(next, columnId);
+  return { ...doc, boards: doc.boards.map((item) => (item.id === boardId ? next : item)) };
 }
 
 function rawVersion(json: string): number | null {

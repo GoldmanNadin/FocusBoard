@@ -13,8 +13,8 @@ export function createHistory<T>(present: T): History<T> {
 }
 
 export function contentSignature(doc: WhiteboardDocument): string {
+  // The theme is a view preference: switching it neither marks the file as changed nor enters undo.
   return JSON.stringify({
-    theme: doc.theme,
     rootBoardId: doc.rootBoardId,
     boards: doc.boards.map((board) => ({
       id: board.id,
@@ -24,7 +24,8 @@ export function contentSignature(doc: WhiteboardDocument): string {
       connectors: board.connectors,
       lines: board.lines,
     })),
-    files: doc.files,
+    // Image bytes never change under the same id, so the id stands for the (large) data URL.
+    files: doc.files.map((file) => [file.id, file.byteSize, file.fileName]),
   });
 }
 
@@ -36,6 +37,7 @@ export function keepViewports(next: WhiteboardDocument, current: WhiteboardDocum
   const views = new Map(current.boards.map((board) => [board.id, board.viewport]));
   return {
     ...next,
+    theme: current.theme,
     boards: next.boards.map((board) => {
       const viewport = views.get(board.id);
       return viewport ? { ...board, viewport } : board;

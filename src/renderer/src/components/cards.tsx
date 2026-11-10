@@ -1,6 +1,6 @@
-import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
-import { useEffect, useState } from 'react';
-import { MIN_BOARD_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
 import type { BoardCard, ImageCard, StickerCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
@@ -30,7 +30,8 @@ export type CardLookup = {
   commitTodoTitle: (id: string, title: string) => void;
   commitTodoItem: (cardId: string, itemId: string, text: string) => void;
   toggleTodo: (cardId: string, itemId: string) => void;
-  addTodoAfter: (cardId: string, itemId: string) => void;
+  addTodoAfter: (cardId: string, itemId: string) => string | null;
+  fitTextHeight: (id: string, height: number) => void;
   deleteTodoItem: (cardId: string, itemId: string) => void;
   startEdit: (id: string) => void;
   armGesture: () => void;
@@ -56,7 +57,8 @@ let lookup: CardLookup = {
   commitTodoTitle: () => undefined,
   commitTodoItem: () => undefined,
   toggleTodo: () => undefined,
-  addTodoAfter: () => undefined,
+  addTodoAfter: () => null,
+  fitTextHeight: () => undefined,
   deleteTodoItem: () => undefined,
   startEdit: () => undefined,
   armGesture: () => undefined,
@@ -91,12 +93,39 @@ function resizer(selected: boolean | undefined, min: { width: number; height: nu
   );
 }
 
+/** Width-only resizing for text cards: their height always follows the text. */
+function widthResizer(selected: boolean | undefined, minWidth: number) {
+  if (!selected) return null;
+  const style = { borderColor: 'var(--ink)', borderWidth: 2 };
+  return (
+    <>
+      <NodeResizeControl position="left" variant={ResizeControlVariant.Line} resizeDirection="horizontal" minWidth={minWidth} style={style} />
+      <NodeResizeControl position="right" variant={ResizeControlVariant.Line} resizeDirection="horizontal" minWidth={minWidth} style={style} />
+    </>
+  );
+}
+
+function baseTextHeight(style: TextCard['style']): number {
+  if (style === 'heading') return DEFAULT_HEADING_SIZE.height;
+  if (style === 'subheading') return DEFAULT_SUBHEADING_SIZE.height;
+  return DEFAULT_TEXT_SIZE.height;
+}
+
 export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<Node<FlowData, 'textCard'>>) {
   const card = lookup.text(id);
   const [draft, setDraft] = useState(card?.text ?? '');
+  const measureRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!data.editing) setDraft(card?.text ?? '');
   }, [card?.text, data.editing]);
+  const shown = data.editing ? draft : (card?.text ?? '');
+  useLayoutEffect(() => {
+    const mirror = measureRef.current;
+    if (!card || !mirror) return;
+    // Mirror text height + the 8 px margin above and below + the 1 px border on each side.
+    const needed = Math.ceil(mirror.offsetHeight + 18);
+    lookup.fitTextHeight(id, Math.max(baseTextHeight(card.style), needed));
+  }, [id, shown, card?.width, card?.style, card?.height]);
   if (!card) return null;
   const color = card.color ? NOTE_COLORS[card.color] : null;
   return (
@@ -110,8 +139,12 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
       data-column={card.columnId ?? ''}
       style={color ? { background: color.fill, color: color.ink } : undefined}
     >
-      {resizer(selected && !data.editing, MIN_TEXT_SIZE)}
+      {widthResizer(selected && !data.editing, MIN_TEXT_SIZE.width)}
       <Handles visible={data.connect} />
+      <div ref={measureRef} className="card-measure" aria-hidden="true">
+        {shown}
+        {'\u200b'}
+      </div>
       {data.editing ? (
         <textarea
           className="nodrag nopan nowheel card-editor"
@@ -120,6 +153,7 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
           autoFocus
           lang="de"
           aria-label={card.style === 'note' ? 'Notiztext' : 'Überschrift'}
+          placeholder={card.style === 'note' ? 'Hier tippen …' : 'Überschrift'}
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
@@ -136,7 +170,7 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
           }}
         />
       ) : (
-        <div className="card-copy">{card.text || (card.style === 'note' ? 'Notiz' : 'Überschrift')}</div>
+        <div className={`card-copy${card.text ? '' : ' is-empty'}`}>{card.text || (card.style === 'note' ? 'Leere Notiz' : 'Überschrift')}</div>
       )}
     </article>
   );
@@ -270,10 +304,33 @@ export function ColumnCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
   );
 }
 
+/** Item that should receive the cursor once it has been rendered (after Enter or Backspace). */
+let pendingTodoFocus: string | null = null;
+
+function focusTodoItem(itemId: string) {
+  const input = document.querySelector<HTMLInputElement>(`[data-item-id="${CSS.escape(itemId)}"]`);
+  if (!input) return false;
+  input.focus();
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+  return true;
+}
+
 export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'todoCard'>>) {
   const card = lookup.todo(id);
+  const itemKey = card?.items.map((item) => item.id).join(' ') ?? '';
+  useEffect(() => {
+    if (pendingTodoFocus && focusTodoItem(pendingTodoFocus)) pendingTodoFocus = null;
+  }, [itemKey]);
   if (!card) return null;
   const done = card.items.filter((item) => item.done).length;
+  const move = (event: ReactKeyboardEvent<HTMLInputElement>, index: number) => {
+    const target = card.items[index];
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    focusTodoItem(target.id);
+  };
   return (
     <article className={`card card-todo${selected ? ' is-selected' : ''}`} data-model-x={Math.round(card.x)} data-model-y={Math.round(card.y)} data-column={card.columnId ?? ''}>
       {resizer(selected, MIN_TODO_SIZE)}
@@ -286,10 +343,13 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
         onFocus={() => lookup.armGesture()}
         onBlur={() => lookup.finishEdit()}
         onChange={(event) => lookup.commitTodoTitle(id, event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === 'ArrowDown') move(event, 0);
+        }}
       />
       <p className="todo-progress">{done}/{card.items.length}</p>
       <ul>
-        {card.items.map((item) => (
+        {card.items.map((item, index) => (
           <li key={item.id}>
             <input
               className="nodrag nopan"
@@ -302,6 +362,8 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
               className={`nodrag nopan nowheel todo-item${item.done ? ' is-done' : ''}`}
               data-role="card-editor"
               aria-label="Eintrag"
+              data-item-id={item.id}
+              placeholder="Neuer Eintrag"
               value={item.text}
               onFocus={() => lookup.armGesture()}
               onBlur={() => lookup.finishEdit()}
@@ -310,12 +372,16 @@ export function TodoCardNode({ id, selected, data }: NodeProps<Node<FlowData, 't
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   event.stopPropagation();
-                  lookup.addTodoAfter(id, item.id);
-                }
-                if (event.key === 'Backspace' && item.text === '') {
+                  pendingTodoFocus = lookup.addTodoAfter(id, item.id);
+                } else if (event.key === 'Backspace' && item.text === '' && card.items.length > 1) {
                   event.preventDefault();
                   event.stopPropagation();
+                  pendingTodoFocus = card.items[index - 1]?.id ?? card.items[index + 1]?.id ?? null;
                   lookup.deleteTodoItem(id, item.id);
+                } else if (event.key === 'ArrowUp') {
+                  move(event, index - 1);
+                } else if (event.key === 'ArrowDown') {
+                  move(event, index + 1);
                 }
               }}
             />

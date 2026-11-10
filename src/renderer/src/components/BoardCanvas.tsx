@@ -38,6 +38,7 @@ export type PlacementApi = {
 export function BoardCanvas(props: {
   board: Board;
   syncToken: number;
+  selectAllToken?: number;
   editingId: string | null;
   focusId: string | null;
   connect: boolean;
@@ -73,6 +74,14 @@ export function BoardCanvas(props: {
     setNodes(toNodes(boardRef.current, props.editingId, focusRef.current, props.connect));
     setEdges(toEdges(boardRef.current));
   }, [props.syncToken, props.editingId, props.connect]);
+
+  const onSelectionRef = useRef(props.onSelection);
+  onSelectionRef.current = props.onSelection;
+  useEffect(() => {
+    if (!props.selectAllToken) return;
+    setNodes((current) => current.map((node) => ({ ...node, selected: !node.hidden })));
+    onSelectionRef.current(boardRef.current.cards.map((card) => card.id));
+  }, [props.selectAllToken]);
 
   setCardLookup(props.lookup);
 
@@ -239,6 +248,10 @@ function FlowSurface(props: {
         const end = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
         if (Math.hypot(end.x - start.x, end.y - start.y) < 6) return;
         suppressClick.current = true;
+        // Only the click fired by this very mouseup is swallowed, never a later real click.
+        window.setTimeout(() => {
+          suppressClick.current = false;
+        }, 0);
         props.onDrawLine(start, end);
       }}
       onDragOver={(event) => {
@@ -272,8 +285,13 @@ function FlowSurface(props: {
             props.onLinePoint(rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
             return;
           }
+          // React Flow also reports a click on a line as a pane click; that click selected the line.
+          if (event.target instanceof Element && event.target.closest('.line-layer')) return;
+          props.onSelectLine(null);
           createFromPane(event);
         }}
+        onNodeClick={() => props.onSelectLine(null)}
+        onSelectionStart={() => props.onSelectLine(null)}
         onNodeDoubleClick={(_event, node) => {
           if (props.tool === 'select') props.onEdit(node.id);
         }}

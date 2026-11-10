@@ -201,9 +201,11 @@ test('docked and standalone lines, color, arrowhead and undo', async () => {
   await page.getByTestId('tool-note').click();
   const pane = page.locator('.react-flow__pane');
   await pane.click({ position: { x: 160, y: 180 } });
+  await page.keyboard.type('Links');
   await page.keyboard.press('Escape');
   await page.getByTestId('tool-note').click();
   await pane.click({ position: { x: 460, y: 180 } });
+  await page.keyboard.type('Rechts');
   await page.keyboard.press('Escape');
 
   await page.getByTestId('tool-line').click();

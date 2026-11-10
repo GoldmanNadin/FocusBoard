@@ -6,6 +6,31 @@ Ziel ist eine App, die sich wie Milanote anfühlt: ruhig, direkt, ohne Überrasc
 
 ---
 
+## Stand der Korrekturen (Branch `claude/hopeful-noether-b6yl4q`)
+
+Alle 13 bestätigten Fehler aus Abschnitt A sind behoben, außerdem B1, B2, B4, B6, B7 und B17 sowie der Platzhalter für leere Notizen. Für jeden Punkt gibt es einen Regressionstest: `tests/e2e/fixes.spec.ts` (11 Oberflächentests) und `tests/fixes.test.ts` (5 Unit-Tests). Insgesamt laufen 38 Unit-Tests und 20 Oberflächentests grün.
+
+| Punkt | Was jetzt passiert |
+|---|---|
+| A1 | Die Sicherung läuft weiter, auch wenn der Wiederherstellen-Hinweis offen ist. Die frühere Sitzung wird beim Start nach `recovery-autosave.json.previous` kopiert. „Verwerfen“ löscht die laufende Sicherung nicht mehr. |
+| A2 | Das „Mehr“-Menü liegt fest am Fenster neben dem Knopf und wird von der Werkzeugleiste nicht mehr abgeschnitten. |
+| A3/A4 | Enter springt in den neuen Eintrag, ↑/↓ wechseln zwischen Einträgen, Enter im Titel springt in den ersten Eintrag. Rücktaste in einem leeren Eintrag löscht ihn und springt in den vorigen. Der letzte Eintrag wird nur geleert. |
+| A5 | Ändert sich die Höhe einer Karte in einer Spalte (Liste, Text, Größenänderung), wird die Spalte neu angeordnet. |
+| A6 | Die Linien-Leiste schließt bei Klick auf die Fläche oder eine Karte, bei Escape, Boardwechsel, Rückgängig, Neu und Öffnen. Entf/Rücktaste löscht die markierte Linie. |
+| A7 | Strg+A wählt alle Karten. Die Oberfläche selbst ist nicht mehr als Text markierbar. |
+| A8 | Alle Eingabefelder werden für Tastenkürzel als Eingabe erkannt. Im Board-Titel übernimmt Enter, Escape stellt den alten Titel wieder her. |
+| A9 | Das Thema ist nicht mehr Teil des Verlaufs und macht die Datei nicht „ungespeichert“. Rückgängig behält das aktuelle Thema. |
+| A10 | Eine neu angelegte Notiz, die leer verlassen wird, verschwindet ohne Eintrag im Verlauf. Leere bestehende Notizen zeigen „Leere Notiz“ blass und kursiv, der Editor zeigt „Hier tippen …“. |
+| A11 | Text-Karten wachsen und schrumpfen mit dem Text (gemessen über eine unsichtbare Kopie des Textes). Die Breite wird an den Seitenkanten gezogen, die Höhe folgt dem Inhalt. |
+| A12 | Anzeige: „Keine Änderungen“ · „Alle Änderungen gespeichert“ · „Nicht in Datei gespeichert · Sicherung 14:32“. |
+| A13 | Linien liegen über den Karten, Pfeilspitzen sind sichtbar. |
+| B1/B2 | „Ungespeichert“ wird nur einmal pro Änderung berechnet, Bilder gehen nur mit ihrer ID in den Vergleich ein. Die vollständige Kopie des Dokuments beim Ziehen und Bearbeiten entfällt. |
+| B4 | „Speichern“ schreibt in eine temporäre Datei, synchronisiert sie und benennt sie dann um. |
+| B6 | Spalte und Liste prüfen die Kartenzahl und die Geometrie, Linien prüfen die Höchstzahl. |
+| B7 | Der Linien-Entwurf wird bei jedem Wechsel von Werkzeug oder Board verworfen. Ein verschluckter Klick nach dem Zeichnen einer Linie bleibt nicht mehr hängen. |
+
+Noch offen sind B3, B5 und B8 bis B16 sowie alles aus den Abschnitten C und D. Das sind Feinschliff und neue Funktionen, keine Fehler, die heute Daten kosten.
+
 ## 0. Kurzfazit
 
 Die Basis ist solide. Datenmodell, Prüfung beim Import, Sicherheit im Electron-Teil (Sandbox, CSP, keine Node-Rechte im Renderer) und die Tests sind sauber gemacht. Die Bedienung fühlt sich aber noch nach Prototyp an:
