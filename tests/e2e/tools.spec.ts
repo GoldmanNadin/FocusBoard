@@ -1,5 +1,5 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -239,5 +239,90 @@ test('Ctrl+Z inside a note undoes typing only, not board changes', async () => {
   await page.keyboard.press('Escape');
   await expect(page.locator('.text-note')).toHaveCount(1);
   await expect(page.locator('.text-note .card-copy')).toContainText('Erste');
+  await app.close();
+});
+
+test('after the first save, changes are written to the file automatically', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-auto-'));
+  const target = path.join(userData, 'board.json');
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData, WHITEBOARD_E2E_SAVE: target },
+  });
+  const page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  await addNote(page, 200, 150, 'Zuerst');
+  await page.keyboard.press('Control+S');
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  await addNote(page, 500, 150, 'Automatisch in der Datei');
+  await expect.poll(() => readFileSync(target, 'utf8').includes('Automatisch in der Datei'), { timeout: 6000 }).toBe(true);
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  await app.close();
+});
+
+test('Ctrl+F finds cards on every board and jumps there', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.keyboard.press('b');
+  await page.mouse.click(b.x + 300, b.y + 200);
+  await page.keyboard.type('Urlaub');
+  await page.keyboard.press('Enter');
+  await page.locator('.react-flow__node:has(.card-board)').dblclick({ position: { x: 30, y: 20 } });
+  await addNote(page, 900, 500, 'Strandkörbe für Österreich');
+  await page.getByRole('button', { name: 'Hauptboard', exact: true }).click();
+  await expect(page.locator('.text-note')).toHaveCount(0);
+
+  await page.keyboard.press('Control+F');
+  await page.getByTestId('search-input').fill('osterreich');
+  await expect(page.getByTestId('search-hit')).toHaveCount(1);
+  await expect(page.getByTestId('search-hit')).toContainText('Notiz · Urlaub');
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Titel dieses Boards')).toHaveValue('Urlaub');
+  await expect(page.locator('.react-flow__node.selected:has(.text-note)')).toBeInViewport();
+  await page.getByTestId('search-input').fill('gibt es nicht');
+  await expect(page.locator('.search-empty')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('search-panel')).toHaveCount(0);
+  await app.close();
+});
+
+test('templates insert ready-made boards', async () => {
+  const { app, page } = await launch();
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('template-kanban').click();
+  await expect(page.locator('.card-column')).toHaveCount(3);
+  await expect(page.locator('.column-title', { hasText: 'Erledigt' })).toBeVisible();
+  await expect(page.locator('.text-note', { hasText: 'Erste Aufgabe' })).not.toHaveAttribute('data-column', '');
+  await page.keyboard.press('Control+Z');
+  await expect(page.locator('.card-column')).toHaveCount(0);
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('template-week').click();
+  await expect(page.locator('.card-column')).toHaveCount(7);
+  await app.close();
+});
+
+test('a line end can be dragged onto a card and docks there', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 500, 150, 'Ziel');
+  const b = await pane(page);
+  await page.getByTestId('tool-line').click();
+  await page.mouse.move(b.x + 150, b.y + 450);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 300, b.y + 480, { steps: 6 });
+  await page.mouse.up();
+  const line = page.getByTestId('canvas-line');
+  await expect(line).toHaveAttribute('data-target', 'point');
+  await line.click({ force: true });
+  const end = page.getByTestId('line-end-target');
+  const handle = await end.boundingBox();
+  const note = await page.locator('.react-flow__node:has(.text-note)').boundingBox();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(note!.x + note!.width / 2, note!.y + note!.height - 1, { steps: 8 });
+  await page.mouse.up();
+  await expect(line).toHaveAttribute('data-target', 'card');
+  await page.keyboard.press('Control+Z');
+  await expect(line).toHaveAttribute('data-target', 'point');
   await app.close();
 });

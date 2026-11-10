@@ -25,6 +25,8 @@ import { relayoutColumn, renameColumn, setColumnWidth, settleCardDrop, toggleCol
 import { addCanvasLine, anchorPosition, deleteLines, snapAnchor, updateLine } from '../../shared/lines';
 import { addLinkCard, copyCards, pasteClip, reorderCards, updateLink, type Clip } from '../../shared/clipboard';
 import { normalizeUrl } from '../../shared/document';
+import { searchDocument, type SearchHit } from '../../shared/search';
+import { TEMPLATES, insertTemplate, type TemplateName } from '../../shared/templates';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
 import { serializeDocument, validateDocument } from '../../shared/document';
 import { placementTopLeft, windowTitle } from '../../shared/gestures';
@@ -113,6 +115,9 @@ function Workbench() {
   const [linkPrompt, setLinkPrompt] = useState<LinkPrompt | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [centerRequest, setCenterRequest] = useState({ token: 0, x: 0, y: 0 });
   const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
   const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
   const histRef = useRef(hist);
@@ -188,6 +193,13 @@ function Workbench() {
     }, 500);
     return () => window.clearTimeout(timer);
   }, [api, doc, demo, dirty]);
+
+  // Once the board lives in a file, changes are written to that file automatically (like Milanote).
+  useEffect(() => {
+    if (demo || !fileName || !dirty || editingId) return;
+    const timer = window.setTimeout(() => void save(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [doc, fileName, dirty, editingId, demo]);
 
   function live(next: WhiteboardDocument) {
     histRef.current = replacePresent(histRef.current, next);
@@ -583,6 +595,40 @@ function Workbench() {
     return false;
   }
 
+  function jumpTo(hit: SearchHit) {
+    finishEdit();
+    if (hit.boardId !== boardRef.current) lookup.openBoard(hit.boardId);
+    setFocusId(hit.cardId);
+    setSyncToken((value) => value + 1);
+    if (hit.center) setCenterRequest((request) => ({ token: request.token + 1, x: hit.center!.x, y: hit.center!.y }));
+  }
+
+  function addTemplate(name: TemplateName) {
+    setMoreOpen(false);
+    const center = placementRef.current?.center() ?? { x: 180, y: 140 };
+    const result = insertTemplate(histRef.current.present, boardRef.current, name, { x: center.x - 400, y: center.y - 200 });
+    if (!result.ok) {
+      setBanner(result.error);
+      return;
+    }
+    commit(result.doc);
+    selectCards(result.cardIds);
+  }
+
+  function moveLineEnd(lineId: string, end: 'source' | 'target', point: { x: number; y: number }) {
+    const board = getBoard(histRef.current.present, boardRef.current);
+    const line = board?.lines.find((item) => item.id === lineId);
+    if (!board || !line) return;
+    const anchor = snapAnchor(point, board.cards, board.viewport.zoom);
+    const other = end === 'source' ? line.target : line.source;
+    if (anchor.kind === 'card' && other.kind === 'card' && anchor.cardId === other.cardId) {
+      setBanner('Eine Linie kann nicht an beiden Enden an derselben Karte hängen.');
+      return;
+    }
+    const result = updateLine(histRef.current.present, board.id, lineId, { [end]: anchor });
+    if (result.ok) commit(result.doc);
+  }
+
   function onDropTool(name: string, point: { x: number; y: number }) {
     if (name === 'image') {
       void addImage(point);
@@ -831,6 +877,11 @@ function Workbench() {
         selectCards('all');
         return;
       }
+      if (meta && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
       if (meta && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         duplicateSelection();
@@ -1036,6 +1087,9 @@ function Workbench() {
           <button type="button" data-testid="redo" aria-label="Wiederholen" disabled={hist.future.length === 0 || editingId !== null} onClick={redo}>
             <IconRedo />
           </button>
+          <button type="button" data-testid="search-open" aria-label="Suchen (Strg+F)" title="Suchen (Strg+F)" onClick={() => setSearchOpen(true)}>
+            Suchen
+          </button>
           <button type="button" data-testid="theme-toggle" aria-label={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'} onClick={() => {
             const result = setTheme(histRef.current.present, doc.theme === 'dark' ? 'light' : 'dark');
             if (result.ok) live(result.doc);
@@ -1111,7 +1165,7 @@ function Workbench() {
             onClick={(event) => {
               // The menu is fixed to the window so the scrolling toolbar cannot clip it.
               const rect = event.currentTarget.getBoundingClientRect();
-              const top = Math.max(8, Math.min(rect.top, window.innerHeight - 140));
+              const top = Math.max(8, Math.min(rect.top, window.innerHeight - 320));
               setMorePos({ left: rect.right + 8, top });
               setMoreOpen((open) => !open);
             }}
@@ -1121,6 +1175,14 @@ function Workbench() {
           {moreOpen ? (
             <div className="more-pop" role="menu" data-testid="more-menu" style={morePos ?? undefined}>
               <button type="button" data-testid="more-board" onClick={() => { chooseTool('subboard'); }}>Unterboard</button>
+              <div className="template-row">
+                <p>Vorlage einfügen</p>
+                {TEMPLATES.map((template) => (
+                  <button key={template.name} type="button" data-testid={`template-${template.name}`} onClick={() => addTemplate(template.name)}>
+                    {template.label}
+                  </button>
+                ))}
+              </div>
               <div className="sticker-row">
                 {(['star', 'heart', 'thumbs', 'smiley', 'arrow'] as StickerKind[]).map((kind) => (
                   <button key={kind} type="button" draggable data-testid={`sticker-${kind}`} aria-label={kind} onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', `sticker:${kind}`)} onClick={() => addStickerAt(kind)}>
@@ -1224,6 +1286,8 @@ function Workbench() {
             onLinePoint={placeLine}
             onSelectLine={setSelectedLine}
             onDrawLine={drawLine}
+            onLineEndpoint={moveLineEnd}
+            centerRequest={centerRequest}
             onLayoutSync={() => setSyncToken((value) => value + 1)}
             lines={current.lines.flatMap((line) => {
               const start = anchorPosition(line.source, current.cards);
@@ -1301,6 +1365,15 @@ function Workbench() {
               <p>Werkzeuge links anklicken oder auf die Fläche ziehen.</p>
               <p>Bilder aus dem Explorer hineinziehen oder mit Strg+V einfügen.</p>
             </div>
+          ) : null}
+          {searchOpen ? (
+            <SearchPanel
+              doc={doc}
+              query={searchQuery}
+              onQuery={setSearchQuery}
+              onPick={(hit) => jumpTo(hit)}
+              onClose={() => setSearchOpen(false)}
+            />
           ) : null}
           {toast ? (
             <div className="toast" role="status" data-testid="toast" key={toast.id}>
@@ -1391,6 +1464,54 @@ function Workbench() {
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function SearchPanel({
+  doc,
+  query,
+  onQuery,
+  onPick,
+  onClose,
+}: {
+  doc: WhiteboardDocument;
+  query: string;
+  onQuery: (value: string) => void;
+  onPick: (hit: SearchHit) => void;
+  onClose: () => void;
+}) {
+  const hits = useMemo(() => searchDocument(doc, query), [doc, query]);
+  return (
+    <div className="search-panel" role="search" data-testid="search-panel">
+      <input
+        autoFocus
+        data-testid="search-input"
+        aria-label="In allen Boards suchen"
+        placeholder="In allen Boards suchen …"
+        value={query}
+        onChange={(event) => onQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            onClose();
+          } else if (event.key === 'Enter' && hits[0]) {
+            event.preventDefault();
+            onPick(hits[0]);
+          }
+        }}
+      />
+      {query.trim() && hits.length === 0 ? <p className="search-empty">Nichts gefunden.</p> : null}
+      <ul className="search-results">
+        {hits.map((hit, index) => (
+          <li key={`${hit.boardId}-${hit.cardId ?? 'board'}-${index}`}>
+            <button type="button" data-testid="search-hit" onClick={() => onPick(hit)}>
+              <span>{hit.text || '(ohne Text)'}</span>
+              <span className="search-meta">{hit.kind} · {hit.boardTitle}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

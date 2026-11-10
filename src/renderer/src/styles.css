@@ -331,3 +331,18 @@ html[data-theme="dark"] .insert-line { background: #fff; }
 @media (max-width: 800px) {
   .toolbar { width: 100%; }
 }
+
+.line-layer circle.line-end { pointer-events: all; cursor: grab; fill: var(--chrome); stroke: var(--ink); stroke-width: 2.5; }
+.search-panel {
+  position: absolute; top: 12px; right: 12px; z-index: 7; width: 360px; max-height: calc(100% - 120px);
+  display: flex; flex-direction: column; gap: 6px; padding: 10px;
+  background: var(--chrome); color: var(--chrome-ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--drag-shadow);
+}
+.search-panel input { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--canvas); color: var(--ink); }
+.search-results { list-style: none; margin: 0; padding: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.search-results button { width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 9px; display: flex; flex-direction: column; gap: 2px; }
+.search-results button:hover, .search-results button:focus-visible { background: var(--toolbar); outline: none; }
+.search-meta { font-size: 12px; color: var(--muted); }
+.search-empty { margin: 4px 8px; font-size: 13px; color: var(--muted); }
+.more-pop .template-row { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.more-pop .template-row p { margin: 0; font-size: 12px; color: var(--muted); }

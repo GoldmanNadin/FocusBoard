@@ -48,9 +48,20 @@ Getestet mit `tests/e2e/tools.spec.ts` (8 Oberflächentests) und `tests/clipboar
 | C11 Rückmeldung | Leere Boards erklären, was man tun kann. Nach dem Löschen erscheint „Karte gelöscht · Rückgängig“ für 6 Sekunden. |
 | Neu gefunden und behoben | **Doppelklick auf die leere Fläche** legte nie eine Notiz an, auch in der Originalversion 0.4.0 nicht: React Flow verschluckt den zweiten Klick, wenn eine Rechteckauswahl beginnt. **Die Auswahl sprang zurück** auf die zuletzt angelegte Karte, sobald sich irgendetwas neu ausrichtete, und manchmal waren dadurch zwei Karten ausgewählt. **Escape schloss das Rechtsklick-Menü nicht.** |
 
+### Neu eingebaut (dritter Schritt)
+
+Stand: 47 Unit-Tests und 32 Oberflächentests grün, zweimal hintereinander.
+
+| Bereich | Was jetzt geht |
+|---|---|
+| B9 Automatisch speichern | Sobald ein Board einmal als Datei gespeichert oder aus einer Datei geöffnet wurde, schreibt FocusBoard jede Änderung 1,5 s später selbst in diese Datei (atomar, siehe B4). Davor greift weiterhin die Sicherung im Datenordner. |
+| D3 Suche | Strg+F oder „Suchen“ oben: durchsucht alle Boards (Notizen, Überschriften, Listen-Einträge, Spalten, Links, Unterboard-Titel), ohne Rücksicht auf Groß-/Kleinschreibung und Umlaute. Enter oder Klick öffnet das Board, wählt die Karte aus und holt sie in die Mitte. |
+| C6 Linien | Eine markierte Linie zeigt Griffe an beiden Enden. Ziehen verschiebt das Ende, über einer Karte dockt es an deren Kante an. Rückgängig ist möglich. |
+| D3 Vorlagen | Unter „Mehr“: Kanban (3 Spalten), Wochenplan (7 Tage + Liste), Moodboard. Eingefügt wie kopierte Karten, mit einem Schritt rückgängig. |
+
 Strg+Z in einer Notiz macht wie bisher nur Zeichen für Zeichen rückgängig (Verhalten von Chromium, war schon in 0.4.0 so). Das Board selbst bleibt davon unberührt. Das ist getestet.
 
-Noch offen: B3, B8–B16, aus C die Punkte Textformatierung, Linien-Griffe und Kurven, Hilfslinien, Minikarte, Animationen, Notizfarben-Palette und dunkles Thema, und aus D Datei-Anhang, Suche, Startseite, automatisches Speichern in die Datei, Vorlagen, Export, Zeichnen, Formen, Farbfeld, Kommentar und Tabelle.
+Noch offen: B3, B8, B10–B16, aus C die Punkte Textformatierung, gebogene Linien, Hilfslinien, Minikarte, Animationen, Notizfarben-Palette und dunkles Thema, und aus D Datei-Anhang, Startseite, Export, Zeichnen, Formen, Farbfeld, Kommentar und Tabelle.
 
 ## 0. Kurzfazit
 

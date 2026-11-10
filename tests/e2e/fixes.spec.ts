@@ -53,15 +53,18 @@ test('A2: the More menu is fully visible and clickable', async () => {
   const { app, page } = await launch();
   await page.getByTestId('tool-more').click();
   const hits = await page.evaluate(() =>
-    ['more-board', 'sticker-star', 'sticker-arrow'].map((id) => {
+    ['more-board', 'template-kanban', 'sticker-star', 'sticker-arrow'].map((id) => {
       const el = document.querySelector(`[data-testid=${id}]`) as HTMLElement;
       const r = el.getBoundingClientRect();
       return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el;
     }),
   );
-  expect(hits).toEqual([true, true, true]);
+  expect(hits).toEqual([true, true, true, true]);
   const menu = await page.getByTestId('more-menu').boundingBox();
-  expect(menu!.height).toBeLessThan(160);
+  const size = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  expect(menu!.y).toBeGreaterThanOrEqual(0);
+  expect(menu!.y + menu!.height).toBeLessThanOrEqual(size.height);
+  expect(menu!.height).toBeLessThan(360);
   await page.getByTestId('sticker-star').click();
   await expect(page.locator('.card-sticker')).toHaveCount(1);
   await app.close();

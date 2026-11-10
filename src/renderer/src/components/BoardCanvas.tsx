@@ -13,7 +13,7 @@ import {
   type NodeChange,
   type Viewport as FlowViewport,
 } from '@xyflow/react';
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { cardPositionAtPointer, wheelAction, type Viewport } from '../../../shared/gestures';
 import { MAX_ZOOM, MIN_ZOOM } from '../../../shared/limits';
 import type { Board } from '../../../shared/model';
@@ -67,6 +67,8 @@ export function BoardCanvas(props: {
   onContextMenu?: (target: { kind: 'card'; id: string } | { kind: 'pane' }, screen: { x: number; y: number }, point: { x: number; y: number }) => void;
   onOpenCard?: (id: string) => boolean;
   onPointer?: (point: { x: number; y: number }) => void;
+  onLineEndpoint?: (lineId: string, end: 'source' | 'target', point: { x: number; y: number }) => void;
+  centerRequest?: { token: number; x: number; y: number };
 }) {
   const boardRef = useRef(props.board);
   boardRef.current = props.board;
@@ -148,6 +150,8 @@ function FlowSurface(props: {
   onContextMenu?: (target: { kind: 'card'; id: string } | { kind: 'pane' }, screen: { x: number; y: number }, point: { x: number; y: number }) => void;
   onOpenCard?: (id: string) => boolean;
   onPointer?: (point: { x: number; y: number }) => void;
+  onLineEndpoint?: (lineId: string, end: 'source' | 'target', point: { x: number; y: number }) => void;
+  centerRequest?: { token: number; x: number; y: number };
 }) {
   const rf = useReactFlow();
   const shellRef = useRef<HTMLDivElement>(null);
@@ -155,6 +159,32 @@ function FlowSurface(props: {
   const suppressClick = useRef(false);
   const columnOrigin = useRef<{ id: string; x: number; y: number; children: { id: string; x: number; y: number }[] } | null>(null);
   const [hint, setHint] = useState<{ x: number; y: number; w: number } | null>(null);
+  const [endDrag, setEndDrag] = useState<{ lineId: string; end: 'source' | 'target'; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const request = props.centerRequest;
+    if (!request || request.token === 0) return;
+    const zoom = Math.max(rf.getViewport().zoom, 0.8);
+    void rf.setCenter(request.x, request.y, { zoom, duration: 0 }).then(() => onViewportRef.current(rf.getViewport()));
+  }, [props.centerRequest?.token]);
+
+  function startEndpointDrag(event: ReactPointerEvent, lineId: string, end: 'source' | 'target') {
+    event.preventDefault();
+    event.stopPropagation();
+    const move = (next: PointerEvent) => {
+      const point = rf.screenToFlowPosition({ x: next.clientX, y: next.clientY });
+      setEndDrag({ lineId, end, x: point.x, y: point.y });
+    };
+    const up = (next: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setEndDrag(null);
+      const point = rf.screenToFlowPosition({ x: next.clientX, y: next.clientY });
+      props.onLineEndpoint?.(lineId, end, point);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
   const onViewportRef = useRef(props.onViewport);
   onViewportRef.current = props.onViewport;
   const editingRef = useRef(props.editingId);
@@ -422,7 +452,14 @@ function FlowSurface(props: {
         <ViewportPortal>
         {hint ? <div className="insert-line" style={{ left: hint.x, top: hint.y, width: hint.w }} /> : null}
         <svg className="line-layer">
-          {props.lines.map((line) => (
+          {props.lines.map((raw) => {
+            const line =
+              endDrag && endDrag.lineId === raw.id
+                ? endDrag.end === 'source'
+                  ? { ...raw, x1: endDrag.x, y1: endDrag.y }
+                  : { ...raw, x2: endDrag.x, y2: endDrag.y }
+                : raw;
+            return (
             <g
               key={line.id}
               data-testid="canvas-line"
@@ -435,8 +472,23 @@ function FlowSurface(props: {
             >
               <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="transparent" strokeWidth={14} />
               <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={line.color} strokeWidth={line.selected ? 4 : 2.5} markerEnd={line.arrowhead ? 'url(#arrow-head)' : undefined} />
+              {line.selected
+                ? (['source', 'target'] as const).map((end) => (
+                    <circle
+                      key={end}
+                      className="line-end"
+                      data-testid={`line-end-${end}`}
+                      cx={end === 'source' ? line.x1 : line.x2}
+                      cy={end === 'source' ? line.y1 : line.y2}
+                      r={7}
+                      onPointerDown={(event) => startEndpointDrag(event, line.id, end)}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  ))
+                : null}
             </g>
-          ))}
+            );
+          })}
           <defs>
             <marker id="arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
               <path d="M0 0 L6 3 L0 6 Z" fill="context-stroke" />

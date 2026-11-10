@@ -106,3 +106,27 @@ describe('clipboard, links and ordering', () => {
     expect(back.boards[0]!.cards[0]!.id).toBe('textcard1');
   });
 });
+
+import { searchDocument } from '../src/shared/search';
+import { insertTemplate } from '../src/shared/templates';
+
+describe('search and templates', () => {
+  it('finds text in every board, ignoring case and accents', () => {
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addSubboard(doc, 'rootboard', 'Urlaub', { x: 0, y: 0 }, { cardId: 'boardcard1', boardId: 'childboard' }));
+    doc = docOf(addTextCard(doc, 'childboard', 'Fähre nach Österreich', { x: 40, y: 60 }, { cardId: 'textcard1' }));
+    const hits = searchDocument(doc, 'OSTERREICH');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ boardId: 'childboard', boardTitle: 'Urlaub', cardId: 'textcard1', kind: 'Notiz' });
+    expect(searchDocument(doc, 'urlaub').map((hit) => hit.kind)).toEqual(['Board']);
+    expect(searchDocument(doc, '   ')).toEqual([]);
+  });
+
+  it('every template produces a valid document', () => {
+    for (const name of ['kanban', 'week', 'moodboard'] as const) {
+      const result = insertTemplate(createEmptyDocument({ rootId: 'rootboard' }), 'rootboard', name, { x: 0, y: 0 });
+      if (!result.ok) throw new Error(result.error);
+      expect(validateDocument(serializeDocument(result.doc)).ok).toBe(true);
+    }
+  });
+});
