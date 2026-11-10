@@ -7,9 +7,9 @@ import { writeAtomic, type AtomicIO } from '../src/shared/atomicWrite';
 import { addColumn, addTextCard, addTodoCard, createEmptyDocument } from '../src/shared/boardOps';
 import { placeInColumn } from '../src/shared/columns';
 import { serializeDocument, validateDocument } from '../src/shared/document';
-import { addCanvasLine, visibleLineEnds } from '../src/shared/lines';
+import { addCanvasLine, lineIntersectsRect, reverseLine, translateLines, visibleLineEnds } from '../src/shared/lines';
 import { MAX_CARDS_PER_BOARD, MAX_CONNECTORS_PER_BOARD, MSG } from '../src/shared/limits';
-import { addTodoItem, deleteTodoItem } from '../src/shared/todos';
+import { addTodoItem, deleteTodoItem, todoHeight } from '../src/shared/todos';
 import type { WhiteboardDocument } from '../src/shared/model';
 
 function docOf(result: { ok: true; doc: WhiteboardDocument } | { ok: false; error: string }): WhiteboardDocument {
@@ -46,6 +46,39 @@ describe('0.4.1 stability', () => {
     const note = cards.find((card) => card.id === 'textcard1');
     expect(todo && note && note.y).toBeGreaterThanOrEqual((todo?.y ?? 0) + (todo?.height ?? 0));
     expectValid(doc);
+  });
+
+  it('moves a line end, detaches a dock on body drag, and reverses direction', () => {
+    let doc = docOf(addTextCard(createEmptyDocument({ rootId: 'rootboard' }), 'rootboard', 'A', { x: 0, y: 0 }, { cardId: 'textcard1' }));
+    doc = docOf(addTextCard(doc, 'rootboard', 'B', { x: 300, y: 0 }, { cardId: 'textcard2' }));
+    doc = docOf(
+      addCanvasLine(
+        doc,
+        'rootboard',
+        { kind: 'card', cardId: 'textcard1', side: 'right', t: 0.5 },
+        { kind: 'card', cardId: 'textcard2', side: 'left', t: 0.5 },
+        { id: 'line00001' },
+      ),
+    );
+    const moved = docOf(translateLines(doc, 'rootboard', ['line00001'], 30, 10, new Set()));
+    const line = moved.boards[0]?.lines[0];
+    expect(line?.source.kind).toBe('point');
+    expect(line?.target.kind).toBe('point');
+    const kept = docOf(translateLines(doc, 'rootboard', ['line00001'], 30, 0, new Set(['textcard1'])));
+    expect(kept.boards[0]?.lines[0]?.source.kind).toBe('card');
+    expect(kept.boards[0]?.lines[0]?.target.kind).toBe('point');
+    const turned = docOf(reverseLine(doc, 'rootboard', 'line00001'));
+    expect(turned.boards[0]?.lines[0]?.source).toMatchObject({ cardId: 'textcard2' });
+    expect(lineIntersectsRect({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 40, y: -10, width: 20, height: 20 })).toBe(true);
+    expectValid(moved);
+    expectValid(turned);
+  });
+
+  it('gives a todo enough height for the add row', () => {
+    const doc = docOf(addTodoCard(createEmptyDocument({ rootId: 'rootboard' }), 'rootboard', { x: 0, y: 0 }));
+    const todo = doc.boards[0]?.cards.find((card) => card.type === 'todo');
+    expect(todo?.height).toBeGreaterThanOrEqual(todoHeight(1));
+    expect(todoHeight(1)).toBeGreaterThan(64 + 36);
   });
 
   it('stops a docked arrowhead short of the card edge', () => {

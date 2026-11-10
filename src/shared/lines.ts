@@ -114,6 +114,75 @@ export function addCanvasLine(
   return { ok: true, doc: withBoard(doc, boardId, { ...board, lines: [...board.lines, line] }) };
 }
 
+function anchorInRange(anchor: LineAnchor): boolean {
+  if (anchor.kind === 'point') return Math.abs(anchor.x) <= COORD_LIMIT && Math.abs(anchor.y) <= COORD_LIMIT;
+  return Number.isFinite(anchor.t);
+}
+
+export function lineIntersectsRect(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+): boolean {
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.height;
+  const inside = (point: { x: number; y: number }) =>
+    point.x >= Math.min(rect.x, right) &&
+    point.x <= Math.max(rect.x, right) &&
+    point.y >= Math.min(rect.y, bottom) &&
+    point.y <= Math.max(rect.y, bottom);
+  if (inside(start) || inside(end)) return true;
+  const edges: [{ x: number; y: number }, { x: number; y: number }][] = [
+    [{ x: rect.x, y: rect.y }, { x: right, y: rect.y }],
+    [{ x: right, y: rect.y }, { x: right, y: bottom }],
+    [{ x: right, y: bottom }, { x: rect.x, y: bottom }],
+    [{ x: rect.x, y: bottom }, { x: rect.x, y: rect.y }],
+  ];
+  const crosses = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
+    const orient = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) =>
+      Math.sign((q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y));
+    return orient(a, b, c) !== orient(a, b, d) && orient(c, d, a) !== orient(c, d, b);
+  };
+  return edges.some(([c, d]) => crosses(start, end, c, d));
+}
+
+function shiftedAnchor(anchor: LineAnchor, dx: number, dy: number, cards: Card[], keepDocked: Set<string>): LineAnchor {
+  if (anchor.kind === 'card' && keepDocked.has(anchor.cardId)) return anchor;
+  const pos = anchorPosition(anchor, cards);
+  if (!pos) return anchor;
+  return { kind: 'point', x: pos.x + dx, y: pos.y + dy };
+}
+
+export function translateLines(
+  doc: WhiteboardDocument,
+  boardId: string,
+  lineIds: string[],
+  dx: number,
+  dy: number,
+  keepDocked: Set<string>,
+): DocResult {
+  const board = getBoard(doc, boardId);
+  if (!board) return { ok: false, error: MSG.missingBoard };
+  if (dx === 0 && dy === 0) return { ok: true, doc };
+  const chosen = new Set(lineIds);
+  const lines = board.lines.map((line) => {
+    if (!chosen.has(line.id)) return line;
+    return {
+      ...line,
+      source: shiftedAnchor(line.source, dx, dy, board.cards, keepDocked),
+      target: shiftedAnchor(line.target, dx, dy, board.cards, keepDocked),
+    };
+  });
+  return { ok: true, doc: withBoard(doc, boardId, { ...board, lines }) };
+}
+
+export function reverseLine(doc: WhiteboardDocument, boardId: string, lineId: string): DocResult {
+  const board = getBoard(doc, boardId);
+  const line = board?.lines.find((item) => item.id === lineId);
+  if (!board || !line) return { ok: false, error: MSG.badLine };
+  return updateLine(doc, boardId, lineId, { source: line.target, target: line.source });
+}
+
 export function updateLine(
   doc: WhiteboardDocument,
   boardId: string,
@@ -129,6 +198,14 @@ export function updateLine(
     return { ...line, ...patch };
   });
   if (!found) return { ok: false, error: MSG.badLine };
+  const next = lines.find((line) => line.id === lineId);
+  if (!next || !anchorInRange(next.source) || !anchorInRange(next.target)) return { ok: false, error: MSG.badLine };
+  if (next.source.kind === 'card' && next.target.kind === 'card' && next.source.cardId === next.target.cardId) {
+    return { ok: false, error: MSG.selfConnect };
+  }
+  if (!anchorPosition(next.source, board.cards) || !anchorPosition(next.target, board.cards)) {
+    return { ok: false, error: MSG.badLine };
+  }
   return { ok: true, doc: withBoard(doc, boardId, { ...board, lines }) };
 }
 

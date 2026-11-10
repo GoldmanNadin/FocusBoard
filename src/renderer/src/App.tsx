@@ -22,7 +22,7 @@ import {
   updateViewport,
 } from '../../shared/boardOps';
 import { relayoutColumn, renameColumn, setColumnWidth, settleCardDrop, toggleColumn } from '../../shared/columns';
-import { addCanvasLine, anchorPosition, deleteLines, snapAnchor, updateLine, visibleLineEnds } from '../../shared/lines';
+import { addCanvasLine, anchorPosition, deleteLines, lineIntersectsRect, reverseLine, snapAnchor, translateLines, updateLine, visibleLineEnds } from '../../shared/lines';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
 import { serializeDocument, validateDocument } from '../../shared/document';
 import { placementTopLeft, windowTitle } from '../../shared/gestures';
@@ -93,7 +93,10 @@ function Workbench() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [noteColor, setNoteColor] = useState<NoteColor>('yellow');
   const [lineDraft, setLineDraft] = useState<LineAnchor | null>(null);
-  const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [lineCursor, setLineCursor] = useState<{ x: number; y: number } | null>(null);
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  const [dockHover, setDockHover] = useState<string | null>(null);
+  const selectedLine = selectedLines.length === 1 ? selectedLines[0] : null;
   const [headerDraft, setHeaderDraft] = useState('Hauptboard');
   const [saving, setSaving] = useState(false);
   const [recoveryStamp, setRecoveryStamp] = useState<string | null>(null);
@@ -142,8 +145,12 @@ function Workbench() {
 
   useEffect(() => {
     setLineDraft(null);
-    setSelectedLine(null);
+    setSelectedLines([]);
   }, [boardId]);
+
+  useEffect(() => {
+    if (demo) setSelectedLines(['linkdemo1']);
+  }, [demo, boardId]);
 
   useEffect(() => {
     api.setDirty(dirty);
@@ -173,6 +180,7 @@ function Workbench() {
         setHist(createHistory(validated.doc));
         setBoardId(validated.doc.rootBoardId);
         setSavedSig(contentSignature(validated.doc));
+        setSelectedLines(['linkdemo1']);
         setSyncToken((value) => value + 1);
       }
       return;
@@ -439,7 +447,7 @@ function Workbench() {
     setSavedSig(contentSignature(next));
     setEditingId(null);
     setFocusId(null);
-    setSelectedLine(null);
+    setSelectedLines([]);
     setLineDraft(null);
     setSyncToken((value) => value + 1);
     await api.clearPath();
@@ -482,7 +490,7 @@ function Workbench() {
     setSavedSig(keepDirty ? null : contentSignature(next));
     setEditingId(null);
     setFocusId(null);
-    setSelectedLine(null);
+    setSelectedLines([]);
     setLineDraft(null);
     setSyncToken((value) => value + 1);
     return true;
@@ -528,7 +536,7 @@ function Workbench() {
       },
       openBoard: (id) => {
         finishEdit();
-        setSelectedLine(null);
+        setSelectedLines([]);
         setLineDraft(null);
         setBoardId(id);
         setTool('select');
@@ -600,7 +608,7 @@ function Workbench() {
         editBefore.current = null;
         setTool('select');
         setLineDraft(null);
-        setSelectedLine(null);
+        setSelectedLines([]);
         setMoreOpen(false);
         setFileOpen(false);
         return;
@@ -613,12 +621,12 @@ function Workbench() {
         setSelectRevision((value) => value + 1);
         return;
       }
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLine) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLines.length > 0) {
         event.preventDefault();
-        const result = deleteLines(histRef.current.present, current.id, [selectedLine]);
+        const result = deleteLines(histRef.current.present, current.id, selectedLines);
         if (result.ok) {
           commit(result.doc);
-          setSelectedLine(null);
+          setSelectedLines([]);
         }
         return;
       }
@@ -826,8 +834,31 @@ function Workbench() {
             placementRef={placementRef}
             onCreate={createAt}
             onPositions={(updates) => {
-              const result = moveCards(histRef.current.present, current.id, updates);
-              if (result.ok) live(result.doc);
+              const before = dragBefore.current;
+              const moved = moveCards(histRef.current.present, current.id, updates);
+              if (!moved.ok) return;
+              let present = moved.doc;
+              if (before && selectedLines.length > 0 && updates[0]) {
+                const origin = getBoard(before, current.id)?.cards.find((card) => card.id === updates[0].id);
+                if (origin) {
+                  const shifted = translateLines(
+                    before,
+                    current.id,
+                    selectedLines,
+                    updates[0].x - origin.x,
+                    updates[0].y - origin.y,
+                    new Set(updates.map((item) => item.id)),
+                  );
+                  if (shifted.ok) {
+                    const lines = getBoard(shifted.doc, current.id)?.lines ?? [];
+                    present = {
+                      ...present,
+                      boards: present.boards.map((board) => (board.id === current.id ? { ...board, lines } : board)),
+                    };
+                  }
+                }
+              }
+              live(present);
             }}
             onSizes={(updates) => {
               let present = histRef.current.present;
@@ -903,12 +934,62 @@ function Workbench() {
             onSelection={setSelectedIds}
             selectRevision={selectRevision}
             forcedSelection={selectedIds}
-            onPaneClear={() => setSelectedLine(null)}
+            onPaneClear={() => setSelectedLines([])}
             onDropTool={onDropTool}
             onLinePoint={placeLine}
-            onSelectLine={setSelectedLine}
+            onLineHover={setLineCursor}
+            onSelectLine={(id) => setSelectedLines(id ? [id] : [])}
             onDrawLine={drawLine}
+            onLineGestureStart={() => {
+              dragBefore.current = structuredClone(histRef.current.present);
+            }}
+            onLineEndMove={(id, which, point) => {
+              const before = dragBefore.current;
+              if (!before) return;
+              const board = getBoard(before, boardRef.current);
+              if (!board) return;
+              const anchor = snapAnchor(point, board.cards, board.viewport.zoom);
+              const result = updateLine(before, boardRef.current, id, { [which]: anchor });
+              if (result.ok) live(result.doc);
+              setDockHover(anchor.kind === 'card' ? anchor.cardId : null);
+            }}
+            onLineBodyMove={(id, dx, dy) => {
+              const before = dragBefore.current;
+              if (!before) return;
+              const result = translateLines(before, boardRef.current, [id], dx, dy, new Set());
+              if (result.ok) live(result.doc);
+            }}
+            onLineGestureEnd={() => {
+              const before = dragBefore.current;
+              dragBefore.current = null;
+              setDockHover(null);
+              if (!before) return;
+              histRef.current = endGesture(histRef.current, before, histRef.current.present, sameContent);
+              setHist(histRef.current);
+            }}
+            onMarquee={(rect) => {
+              const board = getBoard(histRef.current.present, boardRef.current);
+              if (!board) return;
+              const hits = board.lines.flatMap((line) => {
+                const start = anchorPosition(line.source, board.cards);
+                const end = anchorPosition(line.target, board.cards);
+                if (!start || !end || !lineIntersectsRect(start, end, rect)) return [];
+                return [line.id];
+              });
+              setSelectedLines(hits);
+            }}
             onLayoutSync={() => setSyncToken((value) => value + 1)}
+            preview={(() => {
+              if (!lineDraft || !lineCursor) return null;
+              const start = anchorPosition(lineDraft, current.cards);
+              if (!start) return null;
+              return { x1: start.x, y1: start.y, x2: lineCursor.x, y2: lineCursor.y };
+            })()}
+            dockHighlight={(() => {
+              const card = current.cards.find((item) => item.id === dockHover);
+              if (!card) return null;
+              return { x: card.x, y: card.y, width: card.width, height: card.height };
+            })()}
             lines={current.lines.flatMap((line) => {
               const rawStart = anchorPosition(line.source, current.cards);
               const rawEnd = anchorPosition(line.target, current.cards);
@@ -925,7 +1006,7 @@ function Workbench() {
                 color: line.color === 'ink' ? 'currentColor' : colorFill(line.color),
                 colorName: line.color,
                 arrowhead: line.arrowhead,
-                selected: line.id === selectedLine,
+                selected: selectedLines.includes(line.id),
                 sourceKind: line.source.kind,
                 targetKind: line.target.kind,
               }];
@@ -947,6 +1028,10 @@ function Workbench() {
                   }}
                 />
               ))}
+              <button type="button" data-testid="line-reverse" onClick={() => {
+                const result = reverseLine(histRef.current.present, current.id, selectedLine);
+                if (result.ok) commit(result.doc);
+              }}>Umdrehen</button>
               <button type="button" data-testid="line-arrow" onClick={() => {
                 const line = current.lines.find((item) => item.id === selectedLine);
                 if (!line) return;
@@ -957,7 +1042,7 @@ function Workbench() {
                 const result = deleteLines(histRef.current.present, current.id, [selectedLine]);
                 if (result.ok) {
                   commit(result.doc);
-                  setSelectedLine(null);
+                  setSelectedLines([]);
                 }
               }}>Löschen</button>
             </div>

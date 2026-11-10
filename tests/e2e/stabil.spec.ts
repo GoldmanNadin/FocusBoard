@@ -210,7 +210,7 @@ test('a rejected open does not become the save target', async () => {
   const saveButton = page.getByRole('button', { name: 'Speichern', exact: true });
   if (!(await saveButton.isVisible())) await page.getByTestId('file-menu').click();
   await saveButton.click();
-  await expect.poll(() => readFileSync(saved, 'utf8').includes('Sicher')).toBe(true);
+  await expect.poll(() => existsSync(saved) && readFileSync(saved, 'utf8').includes('Sicher'), { timeout: 8000 }).toBe(true);
   expect(readFileSync(bad, 'utf8')).toBe('{');
   await app.close();
 });

@@ -64,6 +64,14 @@ export function BoardCanvas(props: {
   forcedSelection: string[];
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
+  onLineHover: (point: { x: number; y: number }) => void;
+  onLineGestureStart: () => void;
+  onLineEndMove: (id: string, which: 'source' | 'target', point: { x: number; y: number }) => void;
+  onLineBodyMove: (id: string, dx: number, dy: number) => void;
+  onLineGestureEnd: () => void;
+  onMarquee: (rect: { x: number; y: number; width: number; height: number }) => void;
+  preview: { x1: number; y1: number; x2: number; y2: number } | null;
+  dockHighlight: { x: number; y: number; width: number; height: number } | null;
 }) {
   const boardRef = useRef(props.board);
   boardRef.current = props.board;
@@ -129,12 +137,22 @@ function FlowSurface(props: {
   forcedSelection: string[];
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
+  onLineHover: (point: { x: number; y: number }) => void;
+  onLineGestureStart: () => void;
+  onLineEndMove: (id: string, which: 'source' | 'target', point: { x: number; y: number }) => void;
+  onLineBodyMove: (id: string, dx: number, dy: number) => void;
+  onLineGestureEnd: () => void;
+  onMarquee: (rect: { x: number; y: number; width: number; height: number }) => void;
+  preview: { x1: number; y1: number; x2: number; y2: number } | null;
+  dockHighlight: { x: number; y: number; width: number; height: number } | null;
 }) {
   const rf = useReactFlow();
   const shellRef = useRef<HTMLDivElement>(null);
   const drawRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
   const columnOrigin = useRef<{ id: string; x: number; y: number; children: { id: string; x: number; y: number }[] } | null>(null);
+  const marqueeStart = useRef<{ x: number; y: number } | null>(null);
+  const lineDrag = useRef<{ id: string; mode: 'body' | 'source' | 'target'; x: number; y: number } | null>(null);
   const [hint, setHint] = useState<{ x: number; y: number; w: number } | null>(null);
   const onViewportRef = useRef(props.onViewport);
   onViewportRef.current = props.onViewport;
@@ -243,7 +261,19 @@ function FlowSurface(props: {
         if (props.tool !== 'line' || event.button !== 0) return;
         drawRef.current = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       }}
+      onMouseMove={(event) => {
+        if (props.tool === 'line') props.onLineHover(rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        const drag = lineDrag.current;
+        if (!drag) return;
+        const point = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        if (drag.mode === 'body') props.onLineBodyMove(drag.id, point.x - drag.x, point.y - drag.y);
+        else props.onLineEndMove(drag.id, drag.mode, point);
+      }}
       onMouseUp={(event) => {
+        if (lineDrag.current) {
+          lineDrag.current = null;
+          props.onLineGestureEnd();
+        }
         const start = drawRef.current;
         drawRef.current = null;
         if (!start || props.tool !== 'line') return;
@@ -353,6 +383,21 @@ function FlowSurface(props: {
         zoomOnDoubleClick={false}
         panOnDrag={[1]}
         panActivationKeyCode="Space"
+        onSelectionStart={(event) => {
+          marqueeStart.current = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        }}
+        onSelectionEnd={(event) => {
+          const start = marqueeStart.current;
+          marqueeStart.current = null;
+          if (!start) return;
+          const end = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+          props.onMarquee({
+            x: Math.min(start.x, end.x),
+            y: Math.min(start.y, end.y),
+            width: Math.abs(end.x - start.x),
+            height: Math.abs(end.y - start.y),
+          });
+        }}
         selectionOnDrag
         multiSelectionKeyCode="Shift"
         selectionKeyCode={null}
@@ -367,7 +412,13 @@ function FlowSurface(props: {
       >
         <ViewportPortal>
         {hint ? <div className="insert-line" style={{ left: hint.x, top: hint.y, width: hint.w }} /> : null}
+        {props.dockHighlight ? (
+          <div className="dock-highlight" data-testid="dock-highlight" style={{ left: props.dockHighlight.x, top: props.dockHighlight.y, width: props.dockHighlight.width, height: props.dockHighlight.height }} />
+        ) : null}
         <svg className="line-layer">
+          {props.preview ? (
+            <line data-testid="line-preview" x1={props.preview.x1} y1={props.preview.y1} x2={props.preview.x2} y2={props.preview.y2} stroke="currentColor" strokeWidth={2} strokeDasharray="6 4" />
+          ) : null}
           {props.lines.map((line) => (
             <g
               key={line.id}
@@ -378,9 +429,28 @@ function FlowSurface(props: {
               data-arrow={line.arrowhead ? '1' : '0'}
               data-selected={line.selected ? '1' : '0'}
               onClick={(event) => { event.stopPropagation(); props.onSelectLine(line.id); }}
+              onPointerDown={(event) => {
+                const target = event.target as Element;
+                const end = target.getAttribute('data-end');
+                const point = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+                lineDrag.current = { id: line.id, mode: end === 'source' || end === 'target' ? end : 'body', x: point.x, y: point.y };
+                props.onLineGestureStart();
+                event.stopPropagation();
+              }}
+              onPointerUp={() => {
+                if (!lineDrag.current) return;
+                lineDrag.current = null;
+                props.onLineGestureEnd();
+              }}
             >
               <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="transparent" strokeWidth={14} />
               <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={line.color} strokeWidth={line.selected ? 4 : 2.5} markerEnd={line.arrowhead ? 'url(#arrow-head)' : undefined} />
+              {line.selected ? (
+                <>
+                  <circle className="line-handle" data-testid="line-handle-source" data-end="source" cx={line.x1} cy={line.y1} r={8} />
+                  <circle className="line-handle" data-testid="line-handle-target" data-end="target" cx={line.x2} cy={line.y2} r={8} />
+                </>
+              ) : null}
             </g>
           ))}
           <defs>

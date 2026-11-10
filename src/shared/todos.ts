@@ -20,7 +20,7 @@ function replaceTodo(board: Board, next: TodoCard): Board {
 }
 
 export function todoHeight(count: number): number {
-  return Math.max(120, 64 + Math.max(1, count) * 36);
+  return Math.max(168, 108 + Math.max(1, count) * 36);
 }
 
 function storeTodo(doc: WhiteboardDocument, boardId: string, board: Board, card: TodoCard): DocResult {

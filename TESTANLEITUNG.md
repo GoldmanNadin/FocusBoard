@@ -1,13 +1,13 @@
-# Testanleitung Version 0.4.1
+# Testanleitung Version 0.4.2
 
-Kurze Prüfung für PC und Laptop, mit Maus und Tastatur. Die Fläche ist weiß oder schwarz, ohne Raster. Nur die Karten sind farbig. Es gibt keine Animationen. FocusBoard und das Logo bleiben wie in 0.4.0. Diese Fassung behebt die bestätigten Fehler, ohne neue Werkzeuge.
+Kurze Prüfung für PC und Laptop, mit Maus und Tastatur. Die Fläche ist weiß oder schwarz, ohne Raster. Nur die Karten sind farbig. Es gibt keine Animationen. FocusBoard, das Logo und die Bedienung aus 0.4.1 bleiben. Neu ist, dass Pfeile verschoben werden können.
 
-Die Datei `FocusBoard-Setup-0.4.1.exe` ist nicht signiert. Windows kann warnen: Weitere Informationen, dann Trotzdem ausführen. Es wurde kein Zertifikat gekauft. Installiert wird `FocusBoard.exe`. Startmenü, Desktop-Verknüpfung und der Eintrag zum Entfernen heißen FocusBoard. Eine vorhandene Installation wird ersetzt, nicht doppelt angelegt. Die automatische Sicherung bleibt im Datenordner `Digitales Whiteboard`.
+Die Datei `FocusBoard-Setup-0.4.2.exe` ist nicht signiert. Windows kann warnen: Weitere Informationen, dann Trotzdem ausführen. Es wurde kein Zertifikat gekauft. Installiert wird `FocusBoard.exe`. Startmenü, Desktop-Verknüpfung und der Eintrag zum Entfernen heißen FocusBoard. Eine vorhandene Installation wird ersetzt, nicht doppelt angelegt. Die automatische Sicherung bleibt im Datenordner `Digitales Whiteboard`. Alte Dateien öffnen sich weiter.
 
 ## Name und Zeichen
 
 1. Oben links steht das Brett-Zeichen und der Name FocusBoard. Im hellen Thema ist das Zeichen dunkel, im dunklen hell. Ein Klick darauf springt zum Hauptboard.
-2. Die Fenstertitelzeile nennt FocusBoard. Hilfe, Über FocusBoard zeigt den Namen, die Version 0.4.1 und die MIT-Lizenz.
+2. Die Fenstertitelzeile nennt FocusBoard. Hilfe, Über FocusBoard zeigt den Namen, die Version 0.4.2 und die MIT-Lizenz.
 3. Das Programm- und Installer-Symbol ist das Brett ohne das Wort FocusBoard. Unter Linux wurde geprüft, dass die Größen 16, 24, 32, 48, 64, 128 und 256 im Symbol stecken und die EXE sie einbettet. Ob Windows den Symbol-Cache sofort aktualisiert, ist hier nicht geprüft.
 
 Diese Fassung wurde unter Linux gebaut. Nicht auf Windows-Hardware geprüft: echte Maus, Touchpad, SmartScreen, Installation auf dem PC, Startmenü, Desktop-Verknüpfung, Monitorwechsel bei laufender App, Windows-Skalierung 100 %, 150 % und 200 %.
@@ -54,6 +54,18 @@ Rückgängig und Wiederholen, oder Strg+Z und Strg+Y, gelten für die neuen Schr
 Datei, Speichern schreibt die gewählte JSON-Datei weiter im Format Version 3. Zusätzlich sichert die App eine Kopie nur in ihrem Datenordner `Digitales Whiteboard`. Diese Kopie überschreibt die gewählte Datei nicht. Nach einem Abbruch: Wiederherstellen oder Verwerfen.
 
 Eine Datei aus Version 0.2 öffnen. Die Notizen bleiben. Alte Pfeile werden zu Linien. Eine Datei aus Version 0.1 öffnet die Textkarten als gelbe Notizen.
+
+## Pfeile
+
+1. Linie ziehen. Nach dem ersten Punkt folgt eine gestrichelte Vorschau dem Mauszeiger, bis der zweite Punkt gesetzt ist.
+2. Eine Linie anklicken. An beiden Enden sitzen runde Griffe. Einen Griff ziehen verlängert, verlegt oder dreht die Linie. Kommt der Griff über eine Karte, leuchtet die Karte und das Ende dockt an. Ziehen an der Linie selbst verschiebt sie; angedockte Enden lösen sich und werden frei.
+3. Ein Rahmen um Karten und Linien wählt sie zusammen. Zieht man die Karten, wandern die mitgewählten Linien mit. Rückgängig macht den ganzen Zug in einem Schritt rückgängig.
+4. In der Linienleiste dreht „Umdrehen“ die Pfeilrichtung um.
+5. Eine gebogene Linie gibt es nicht.
+
+## Liste
+
+„+ Eintrag“ liegt innerhalb der Karte, auch wenn die Liste in einer Spalte steht.
 
 ## Stand 0.4.1
 

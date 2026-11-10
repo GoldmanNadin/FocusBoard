@@ -19,7 +19,7 @@ function icoSizes(bytes: Buffer): number[] {
 describe('FocusBoard branding', () => {
   it('keeps the file format and the old autosave folder', () => {
     expect(PRODUCT_NAME).toBe('FocusBoard');
-    expect(APP_VERSION).toBe('0.4.1');
+    expect(APP_VERSION).toBe('0.4.2');
     expect(FORMAT).toBe('digitales-whiteboard');
     expect(FORMAT_VERSION).toBe(3);
     expect(LEGACY_USER_DATA_DIR).toBe('Digitales Whiteboard');
@@ -32,7 +32,7 @@ describe('FocusBoard branding', () => {
   it('describes FocusBoard in the about text and keeps import compatibility', () => {
     const copy = aboutCopy(APP_VERSION);
     expect(copy.title).toBe('FocusBoard');
-    expect(copy.message).toBe('FocusBoard 0.4.1');
+    expect(copy.message).toBe('FocusBoard 0.4.2');
     expect(copy.detail).toContain('MIT-Lizenz');
     expect(copy.detail).toContain('digitales-whiteboard');
     expect(copy.detail).toContain('0.3');

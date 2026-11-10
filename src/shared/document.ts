@@ -40,6 +40,7 @@ import type {
   WhiteboardDocument,
 } from './model';
 import { codePointLength } from './text';
+import { todoHeight } from './todos';
 
 const HANDLES = new Set<HandleSide>(['top', 'right', 'bottom', 'left']);
 
@@ -144,7 +145,8 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
           return [{ id: itemId, text: item.text.slice(0, 400), done: item.done === true }];
         })
       : [];
-    return { id, type: 'todo', x, y, width, height, title, items, columnId: readColumnId(value.columnId) };
+    const fitted = Math.min(MAX_CARD_EDGE, Math.max(height, todoHeight(Math.max(1, items.length))));
+    return { id, type: 'todo', x, y, width, height: fitted, title, items, columnId: readColumnId(value.columnId) };
   }
   const boardId = idField(value.boardId);
   if (!boardId) return null;

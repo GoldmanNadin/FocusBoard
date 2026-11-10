@@ -230,6 +230,10 @@ svg { width: 22px; height: 22px; display: block; }
 .todo-item.is-done { text-decoration: line-through; color: var(--muted); }
 .line-layer { position: absolute; inset: 0; overflow: visible; width: 4000px; height: 4000px; pointer-events: none; }
 .line-layer line { pointer-events: stroke; cursor: pointer; }
+.line-handle { fill: #fffdf8; stroke: #241c14; stroke-width: 2; cursor: grab; pointer-events: all; }
+.dock-highlight { position: absolute; border: 3px solid #241c14; border-radius: 22px; pointer-events: none; }
+html[data-theme="dark"] .line-handle { fill: #161616; stroke: #fff; }
+html[data-theme="dark"] .dock-highlight { border-color: #fff; }
 .insert-line { position: absolute; height: 3px; background: #241c14; pointer-events: none; z-index: 5; }
 html[data-theme="dark"] .card-todo { background: #161616; }
 html[data-theme="dark"] .insert-line { background: #fff; }
