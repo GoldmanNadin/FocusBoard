@@ -100,7 +100,7 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
   const x = numberIn(value.x, -COORD_LIMIT, COORD_LIMIT);
   const y = numberIn(value.y, -COORD_LIMIT, COORD_LIMIT);
   if (x == null || y == null) return null;
-  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch' && type !== 'swatch' && type !== 'shape') {
+  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch' && type !== 'swatch' && type !== 'shape' && type !== 'table') {
     return null;
   }
   const min = minSizeFor(type);
@@ -116,7 +116,7 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
     if (text !== value.text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')) return null;
     if (codePointLength(text) > MAX_TEXT_LENGTH) return null;
     const style: TextStyle =
-      value.style === 'heading' || value.style === 'subheading' || value.style === 'note' ? value.style : 'note';
+      value.style === 'heading' || value.style === 'subheading' || value.style === 'note' || value.style === 'comment' ? value.style : 'note';
     const color = readNoteColor(value.color, style);
     const card: TextCard = { id, type: 'text', x, y, width, height, text, style, color, columnId: readColumnId(value.columnId) };
     return card;
@@ -149,6 +149,18 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
         })
       : [];
     return { id, type: 'todo', x, y, width, height, title, items, columnId: readColumnId(value.columnId) };
+  }
+  if (type === 'table') {
+    if (!Array.isArray(value.rows) || value.rows.length < 1 || value.rows.length > 40) return null;
+    const width0 = Array.isArray(value.rows[0]) ? value.rows[0].length : 0;
+    if (width0 < 1 || width0 > 10) return null;
+    const rows: string[][] = [];
+    for (const row of value.rows) {
+      if (!Array.isArray(row) || row.length !== width0) return null;
+      if (!row.every((cell) => typeof cell === 'string' && cell.length <= 300)) return null;
+      rows.push((row as string[]).map((cell) => cell.replace(/[\u0000-\u001F\u007F]/g, ' ')));
+    }
+    return { id, type: 'table', x, y, width, height, rows, columnId: readColumnId(value.columnId) };
   }
   if (type === 'swatch') {
     if (typeof value.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(value.color)) return null;

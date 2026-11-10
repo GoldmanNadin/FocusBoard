@@ -19,6 +19,12 @@ extraResources:
     to: brand/icon.ico
   - from: assets/brand/icon-256.png
     to: brand/icon-256.png
+fileAssociations:
+  - ext: focusboard
+    name: FocusBoard-Board
+    description: FocusBoard-Board
+    icon: assets/brand/icon.ico
+    role: Editor
 win:
   icon: assets/brand/icon.ico
   target:

@@ -257,6 +257,28 @@ async function writeAtomically(target: string, content: string): Promise<void> {
   }
 }
 
+/** Lays the captured board out on one landscape A4 page, using an invisible, locked-down window. */
+async function pngToPdf(dataUrl: string, size: { width: number; height: number }): Promise<Buffer> {
+  const page = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false },
+  });
+  lockContents(page.webContents);
+  try {
+    const landscape = size.width >= size.height;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }
+      html, body { margin: 0; height: 100%; }
+      body { display: flex; align-items: center; justify-content: center; }
+      img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    </style></head><body><img src="${dataUrl}"></body></html>`;
+    await page.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    return await page.webContents.printToPDF({ landscape, pageSize: 'A4', printBackground: true, margins: { marginType: 'none' } });
+  } finally {
+    page.destroy();
+  }
+}
+
 const RECENT_FILE = 'recent-boards.json';
 const MAX_RECENT = 8;
 
@@ -291,8 +313,26 @@ async function readBoardFile(filePath: string) {
 }
 
 function ensureJson(filePath: string): string {
-  return filePath.toLowerCase().endsWith('.json') ? filePath : `${filePath}.json`;
+  const lower = filePath.toLowerCase();
+  return lower.endsWith('.json') || lower.endsWith('.focusboard') ? filePath : `${filePath}.json`;
 }
+
+const BOARD_FILTERS = [{ name: 'FocusBoard-Datei', extensions: ['json', 'focusboard'] }];
+
+/** A board file given on the command line ("Öffnen mit", file dropped on the program icon). */
+function boardFileFromArgs(argv: string[]): string | null {
+  for (const arg of argv.slice(1)) {
+    if (!arg || arg.startsWith('-')) continue;
+    const ext = path.extname(arg).toLowerCase();
+    if ((ext !== '.json' && ext !== '.focusboard') || path.basename(arg).toLowerCase() === 'package.json') continue;
+    const full = path.resolve(arg);
+    return full;
+  }
+  return null;
+}
+
+/** Set only by the main process from the command line; the renderer can only ask for this one file. */
+let pendingOpen: string | null = boardFileFromArgs(process.argv);
 
 function registerIpc(): void {
   ipcMain.handle(Ipc.save, async (_event, payload: unknown) => {
@@ -314,7 +354,7 @@ function registerIpc(): void {
       const result = await dialog.showSaveDialog(win, {
         title: 'Whiteboard speichern',
         defaultPath: path.join(app.getPath('documents'), 'whiteboard.json'),
-        filters: [{ name: 'Whiteboard-Datei', extensions: ['json'] }],
+        filters: BOARD_FILTERS,
         properties: ['createDirectory', 'showOverwriteConfirmation'],
       });
       if (result.canceled || !result.filePath) return { ok: true, canceled: true };
@@ -335,7 +375,7 @@ function registerIpc(): void {
     if (!win) return { ok: false, error: MSG.invalidDoc };
     const result = await dialog.showOpenDialog(win, {
       title: 'Whiteboard öffnen',
-      filters: [{ name: 'Whiteboard-Datei', extensions: ['json'] }],
+      filters: BOARD_FILTERS,
       properties: ['openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) return { ok: true, canceled: true };
@@ -466,6 +506,21 @@ function registerIpc(): void {
     return { ok: true };
   });
 
+  ipcMain.handle(Ipc.takePendingOpen, async () => {
+    const target = pendingOpen;
+    pendingOpen = null;
+    if (!target) return { ok: true, canceled: true };
+    try {
+      const prepared = await readBoardFile(target);
+      if (!prepared.ok) return prepared;
+      currentPath = target;
+      await rememberRecent(target);
+      return { ok: true, canceled: false, fileName: path.basename(target), json: prepared.json };
+    } catch {
+      return { ok: false, error: 'Die Datei kann nicht geöffnet werden.' };
+    }
+  });
+
   ipcMain.handle(Ipc.recentList, async () => {
     const list = await readRecent();
     return Promise.all(
@@ -502,21 +557,28 @@ function registerIpc(): void {
     const nums = ['x', 'y', 'width', 'height'].map((key) => Number(box[key]));
     if (nums.some((value) => !Number.isFinite(value)) || nums[2]! < 10 || nums[3]! < 10) return { ok: false, error: 'Export nicht möglich.' };
     const [x, y, width, height] = nums.map((value) => Math.round(value)) as [number, number, number, number];
+    const format = box.format === 'pdf' ? 'pdf' : 'png';
     const image = await win.webContents.capturePage({ x, y, width, height });
     let target: string | null = null;
-    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_EXPORT) target = process.env.WHITEBOARD_E2E_EXPORT;
+    if (process.env.WHITEBOARD_E2E === '1' && process.env.WHITEBOARD_E2E_EXPORT) {
+      target = process.env.WHITEBOARD_E2E_EXPORT.replace(/\.(png|pdf)$/i, '') + `.${format}`;
+    }
     if (!target) {
       const base = typeof box.name === 'string' ? box.name.replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) : '';
       const result = await dialog.showSaveDialog(win, {
-        title: 'Board als Bild speichern',
-        defaultPath: path.join(app.getPath('pictures'), `${base || 'Board'}.png`),
-        filters: [{ name: 'PNG-Bild', extensions: ['png'] }],
+        title: format === 'pdf' ? 'Board als PDF speichern' : 'Board als Bild speichern',
+        defaultPath: path.join(app.getPath(format === 'pdf' ? 'documents' : 'pictures'), `${base || 'Board'}.${format}`),
+        filters: [format === 'pdf' ? { name: 'PDF-Dokument', extensions: ['pdf'] } : { name: 'PNG-Bild', extensions: ['png'] }],
         properties: ['createDirectory', 'showOverwriteConfirmation'],
       });
       if (result.canceled || !result.filePath) return { ok: true, canceled: true };
-      target = result.filePath.toLowerCase().endsWith('.png') ? result.filePath : `${result.filePath}.png`;
+      target = result.filePath.toLowerCase().endsWith(`.${format}`) ? result.filePath : `${result.filePath}.${format}`;
     }
     try {
+      if (format === 'pdf') {
+        await fs.writeFile(target, await pngToPdf(image.toDataURL(), image.getSize()));
+        return { ok: true, canceled: false, fileName: path.basename(target) };
+      }
       await fs.writeFile(target, image.toPNG());
       return { ok: true, canceled: false, fileName: path.basename(target) };
     } catch {
@@ -580,6 +642,23 @@ function registerIpc(): void {
 }
 
 // DPI follows the operating system. Do not force a device scale factor.
+// One FocusBoard window: opening a second board file hands it to the running window.
+if (process.env.WHITEBOARD_E2E !== '1' && !app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const file = boardFileFromArgs(argv);
+    const win = mainWindow;
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    if (file) {
+      pendingOpen = file;
+      win.webContents.send(Ipc.openRequest);
+    }
+  });
+}
+
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
     callback(false);

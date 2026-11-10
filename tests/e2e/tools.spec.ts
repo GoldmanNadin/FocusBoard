@@ -489,3 +489,120 @@ test('shapes and colour swatches from the More menu', async () => {
   await expect(page.getByTestId('search-hit')).toContainText('Farbe');
   await app.close();
 });
+
+test('dragging a card near another snaps it into line and shows a guide; Alt places freely', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Fest');
+  await addNote(page, 600, 400, 'Bewegt');
+  const moving = page.locator('.react-flow__node:has(.text-note)').last();
+  const fixed = page.locator('.text-note').first();
+  const fixedY = Number(await fixed.getAttribute('data-model-y'));
+  const box = (await moving.boundingBox())!;
+  const fixedBox = (await page.locator('.react-flow__node:has(.text-note)').first().boundingBox())!;
+  await page.mouse.move(box.x + 30, box.y + 20);
+  await page.mouse.down();
+  // Start the drag with a small move (React Flow uses the first move as its threshold),
+  // then aim 4 px below the fixed card's top edge: the card should snap to it.
+  await page.mouse.move(box.x + 30, box.y + 30, { steps: 3 });
+  const during = (await moving.boundingBox())!;
+  const pointerY = box.y + 30 + (fixedBox.y + 4 - during.y);
+  await page.mouse.move(box.x + 30, pointerY, { steps: 12 });
+  await expect(page.getByTestId('snap-guide').first()).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId('snap-guide')).toHaveCount(0);
+  await expect.poll(async () => Number(await page.locator('.text-note').last().getAttribute('data-model-y'))).toBe(fixedY);
+
+  const again = (await moving.boundingBox())!;
+  await page.keyboard.down('Alt');
+  await page.mouse.move(again.x + 30, again.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(again.x + 30, again.y + 30, { steps: 3 });
+  await page.mouse.move(again.x + 30, again.y + 40, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  // With Alt held the card stays a few pixels off the line instead of snapping back.
+  await expect.poll(async () => Number(await page.locator('.text-note').last().getAttribute('data-model-y')) - fixedY).toBeGreaterThan(2);
+  await app.close();
+});
+
+test('export as PDF, open a board given on the command line, load a dropped board file', async () => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-pdf-'));
+  const board = path.join(userData, 'start.focusboard');
+  const picture = path.join(userData, 'board.png');
+  // Build a small board file through the app's own save first.
+  let app = await electron.launch({ args: ['.'], cwd: process.cwd(), env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData, WHITEBOARD_E2E_SAVE: board, WHITEBOARD_E2E_EXPORT: picture } });
+  let page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  await addNote(page, 200, 150, 'Aus der Kommandozeile');
+  await page.getByTestId('file-menu').click();
+  await page.getByTestId('export-pdf').click();
+  await expect(page.getByTestId('toast')).toContainText('board.pdf');
+  expect(readFileSync(path.join(userData, 'board.pdf')).subarray(0, 5).toString()).toBe('%PDF-');
+  await page.keyboard.press('Control+S');
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  const json = readFileSync(board, 'utf8');
+  await app.close();
+
+  app = await electron.launch({ args: ['.', board], cwd: process.cwd(), env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: mkdtempSync(path.join(tmpdir(), 'whiteboard-arg-')) } });
+  page = await app.firstWindow();
+  await expect(page.locator('.text-note', { hasText: 'Aus der Kommandozeile' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('save-state')).toHaveText('Alle Änderungen gespeichert');
+  await page.getByTestId('file-menu').click();
+  await page.getByTestId('file-menu').click();
+  await app.close();
+
+  app = await electron.launch({ args: ['.'], cwd: process.cwd(), env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: mkdtempSync(path.join(tmpdir(), 'whiteboard-drop-')) } });
+  page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  const b = await pane(page);
+  await page.evaluate(
+    ([text, x, y]) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([text], 'geteilt.focusboard', { type: '' }));
+      const target = document.querySelector('.flow-shell')!;
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer }));
+    },
+    [json, b.x + 300, b.y + 300] as const,
+  );
+  await expect(page.locator('.text-note', { hasText: 'Aus der Kommandozeile' })).toBeVisible();
+  await expect(page.getByTestId('toast')).toContainText('geteilt.focusboard');
+  await app.close();
+});
+
+test('comments and tables from the More menu', async () => {
+  const { app, page } = await launch();
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('more-comment').click();
+  await page.keyboard.type('Bitte nachfragen');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.text-comment .card-copy')).toHaveText('Bitte nachfragen');
+
+  await page.getByTestId('tool-more').click();
+  await page.getByTestId('more-table').click();
+  const table = page.locator('.card-table');
+  await expect(table).toHaveAttribute('data-rows', '3');
+  await expect(page.getByLabel('Zeile 1, Spalte 1')).toBeFocused();
+  await page.keyboard.type('Name');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Preis');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('5 €');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await expect(table).toHaveAttribute('data-rows', '4');
+  await expect(page.getByLabel('Zeile 4, Spalte 2')).toBeFocused();
+  await expect(page.getByLabel('Zeile 2, Spalte 2')).toHaveValue('5 €');
+  await page.locator('.react-flow__node:has(.card-table)').click({ position: { x: 4, y: 4 } });
+  await page.getByTestId('table-add-col').click();
+  await expect(table).toHaveAttribute('data-cols', '4');
+  await page.keyboard.press('Control+Z');
+  await expect(table).toHaveAttribute('data-cols', '3');
+
+  await page.keyboard.press('Control+F');
+  await page.getByTestId('search-input').fill('preis');
+  await expect(page.getByTestId('search-hit')).toContainText('Tabelle');
+  await page.getByTestId('search-input').fill('nachfragen');
+  await expect(page.getByTestId('search-hit')).toContainText('Kommentar');
+  await app.close();
+});

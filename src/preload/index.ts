@@ -75,13 +75,19 @@ const api = {
   clearRecovery(): Promise<{ ok: true }> {
     return ipcRenderer.invoke(Ipc.recoveryClear);
   },
+  takePendingOpen(): Promise<OpenResult> {
+    return ipcRenderer.invoke(Ipc.takePendingOpen);
+  },
+  onOpenRequest(callback: () => void): () => void {
+    return subscribe(Ipc.openRequest, callback);
+  },
   listRecent(): Promise<RecentBoard[]> {
     return ipcRenderer.invoke(Ipc.recentList);
   },
   openRecent(filePath: string): Promise<OpenResult> {
     return ipcRenderer.invoke(Ipc.recentOpen, typeof filePath === 'string' ? filePath : '');
   },
-  exportPng(box: { x: number; y: number; width: number; height: number; name: string }): Promise<SaveResult> {
+  exportPng(box: { x: number; y: number; width: number; height: number; name: string; format?: 'png' | 'pdf' }): Promise<SaveResult> {
     return ipcRenderer.invoke(Ipc.exportPng, box);
   },
   copyText(text: string): Promise<boolean> {

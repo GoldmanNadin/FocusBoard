@@ -1,7 +1,7 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
-import type { BoardCard, ImageCard, LineColor, LinkCard, ShapeCard, SketchCard, SketchStroke, StickerCard, SwatchCard, TextCard } from '../../../shared/model';
+import { DEFAULT_COMMENT_SIZE, DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SHAPE_SIZE, MIN_SKETCH_SIZE, MIN_SWATCH_SIZE, MIN_TABLE_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import type { BoardCard, ImageCard, LineColor, LinkCard, ShapeCard, SketchCard, SketchStroke, StickerCard, SwatchCard, TableCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
 import { renderCardText } from '../markdown';
@@ -40,6 +40,9 @@ export type CardLookup = {
   shape: (id: string) => ShapeCard | undefined;
   commitShapeText: (id: string, text: string) => void;
   notify: (text: string) => void;
+  table: (id: string) => TableCard | undefined;
+  setCell: (id: string, row: number, col: number, text: string) => void;
+  tableOp: (id: string, op: 'addRow' | 'addColumn' | 'removeRow' | 'removeColumn', after?: number) => void;
   copyText: (text: string) => void;
   addStroke: (id: string, stroke: SketchStroke) => void;
   undoStroke: (id: string) => void;
@@ -78,6 +81,9 @@ let lookup: CardLookup = {
   shape: () => undefined,
   commitShapeText: () => undefined,
   notify: () => undefined,
+  table: () => undefined,
+  setCell: () => undefined,
+  tableOp: () => undefined,
   copyText: () => undefined,
   addStroke: () => undefined,
   undoStroke: () => undefined,
@@ -161,6 +167,25 @@ function redoTyping(history: TextHistory): { value: string; caret: number } | nu
   return step;
 }
 
+/** Keys typed after a card was created but before its editor appeared; inserted once it is ready. */
+let earlyTyping = '';
+
+export function bufferEarlyTyping(key: string) {
+  earlyTyping = (earlyTyping + key).slice(-200);
+}
+
+export function clearEarlyTyping() {
+  earlyTyping = '';
+}
+
+function flushEarlyTyping(field: HTMLTextAreaElement | null) {
+  if (!field || !earlyTyping) return;
+  const text = earlyTyping;
+  earlyTyping = '';
+  field.focus();
+  document.execCommand('insertText', false, text);
+}
+
 /** Width-only resizing for text cards: their height always follows the text. */
 function widthResizer(selected: boolean | undefined, minWidth: number) {
   if (!selected) return null;
@@ -176,6 +201,7 @@ function widthResizer(selected: boolean | undefined, minWidth: number) {
 function baseTextHeight(style: TextCard['style']): number {
   if (style === 'heading') return DEFAULT_HEADING_SIZE.height;
   if (style === 'subheading') return DEFAULT_SUBHEADING_SIZE.height;
+  if (style === 'comment') return DEFAULT_COMMENT_SIZE.height;
   return DEFAULT_TEXT_SIZE.height;
 }
 
@@ -184,8 +210,11 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
   const [draft, setDraft] = useState(card?.text ?? '');
   const measureRef = useRef<HTMLDivElement>(null);
   const typing = useRef(createTextHistory(card?.text ?? ''));
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (data.editing) typing.current = createTextHistory(card?.text ?? '');
+    if (!data.editing) return;
+    typing.current = createTextHistory(card?.text ?? '');
+    flushEarlyTyping(editorRef.current);
   }, [data.editing]);
   useEffect(() => {
     if (!data.editing) setDraft(card?.text ?? '');
@@ -227,13 +256,14 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
       </div>
       {data.editing ? (
         <textarea
+          ref={editorRef}
           className="nodrag nopan nowheel card-editor"
           data-testid="card-editor"
           data-role="card-editor"
           autoFocus
           lang="de"
-          aria-label={card.style === 'note' ? 'Notiztext' : 'Überschrift'}
-          placeholder={card.style === 'note' ? 'Hier tippen …' : 'Überschrift'}
+          aria-label={card.style === 'note' ? 'Notiztext' : card.style === 'comment' ? 'Kommentar' : 'Überschrift'}
+          placeholder={card.style === 'note' ? 'Hier tippen …' : card.style === 'comment' ? 'Anmerkung …' : 'Überschrift'}
           // Uncontrolled on purpose: React never writes into the field while typing, so the
           // browser's own undo groups typing into words instead of single characters.
           defaultValue={draft}
@@ -285,7 +315,7 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
         />
       ) : (
         <div className={`card-copy md${card.text ? '' : ' is-empty'}`}>
-          {card.text ? renderCardText(card.text, (url) => lookup.openLink(url)) : card.style === 'note' ? 'Leere Notiz' : 'Überschrift'}
+          {card.text ? renderCardText(card.text, (url) => lookup.openLink(url)) : card.style === 'note' ? 'Leere Notiz' : card.style === 'comment' ? 'Leerer Kommentar' : 'Überschrift'}
         </div>
       )}
     </article>
@@ -734,6 +764,7 @@ export function ShapeCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
       </svg>
       {data.editing ? (
         <textarea
+          ref={(field) => flushEarlyTyping(field)}
           className="nodrag nopan nowheel shape-text shape-editor"
           data-testid="shape-editor"
           data-role="card-editor"
@@ -754,6 +785,85 @@ export function ShapeCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
       ) : (
         <div className="shape-text">{card.text}</div>
       )}
+    </article>
+  );
+}
+
+/** Cell that should get the cursor after a row was added by Enter in the last row. */
+let pendingCell: { id: string; row: number; col: number } | null = null;
+
+/** Asks a table card to put the cursor into a cell as soon as it is rendered. */
+export function requestCellFocus(id: string, row: number, col: number) {
+  pendingCell = { id, row, col };
+}
+
+function focusCell(id: string, row: number, col: number): boolean {
+  const input = document.querySelector<HTMLInputElement>(`[data-table="${CSS.escape(id)}"][data-row="${row}"][data-col="${col}"]`);
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+export function TableCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'tableCard'>>) {
+  const card = lookup.table(id);
+  const shape = card ? `${card.rows.length}x${card.rows[0]?.length ?? 0}` : '';
+  useEffect(() => {
+    if (pendingCell && pendingCell.id === id && focusCell(id, pendingCell.row, pendingCell.col)) pendingCell = null;
+  }, [shape, id]);
+  if (!card) return null;
+  const cols = card.rows[0]?.length ?? 0;
+  return (
+    <article className={`card card-table${selected ? ' is-selected' : ''}`} data-rows={card.rows.length} data-cols={cols} data-column={card.columnId ?? ''}>
+      {widthResizer(selected, MIN_TABLE_SIZE.width)}
+      <Handles visible={data.connect} />
+      {selected ? (
+        <div className="table-tools nodrag nopan" role="toolbar" aria-label="Tabelle">
+          <button type="button" data-testid="table-add-row" onClick={() => lookup.tableOp(id, 'addRow')}>+ Zeile</button>
+          <button type="button" data-testid="table-add-col" onClick={() => lookup.tableOp(id, 'addColumn')}>+ Spalte</button>
+          <button type="button" data-testid="table-remove-row" disabled={card.rows.length <= 1} onClick={() => lookup.tableOp(id, 'removeRow')}>− Zeile</button>
+          <button type="button" data-testid="table-remove-col" disabled={cols <= 1} onClick={() => lookup.tableOp(id, 'removeColumn')}>− Spalte</button>
+        </div>
+      ) : null}
+      <table>
+        <tbody>
+          {card.rows.map((cells, row) => (
+            <tr key={row} className={row === 0 ? 'is-head' : undefined}>
+              {cells.map((cell, col) => (
+                <td key={col}>
+                  <input
+                    className="nodrag nopan nowheel"
+                    data-role="card-editor"
+                    data-table={id}
+                    data-row={row}
+                    data-col={col}
+                    aria-label={`Zeile ${row + 1}, Spalte ${col + 1}`}
+                    value={cell}
+                    onFocus={() => lookup.armGesture()}
+                    onBlur={() => lookup.finishEdit()}
+                    onChange={(event) => lookup.setCell(id, row, col, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (row + 1 < card.rows.length) focusCell(id, row + 1, col);
+                        else if (event.key === 'Enter') {
+                          pendingCell = { id, row: row + 1, col };
+                          lookup.tableOp(id, 'addRow');
+                        }
+                      } else if (event.key === 'ArrowUp' && row > 0) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        focusCell(id, row - 1, col);
+                      }
+                    }}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </article>
   );
 }

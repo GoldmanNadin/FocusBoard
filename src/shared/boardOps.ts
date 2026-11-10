@@ -19,6 +19,7 @@ import {
 import {
   DEFAULT_HEADING_SIZE,
   DEFAULT_STICKER_SIZE,
+  DEFAULT_COMMENT_SIZE,
   DEFAULT_SUBHEADING_SIZE,
   DEFAULT_TEXT_SIZE,
 } from './limits';
@@ -155,6 +156,7 @@ function usedIds(doc: WhiteboardDocument): Set<string> {
 export function textCardSize(style: TextStyle): { width: number; height: number } {
   if (style === 'heading') return DEFAULT_HEADING_SIZE;
   if (style === 'subheading') return DEFAULT_SUBHEADING_SIZE;
+  if (style === 'comment') return DEFAULT_COMMENT_SIZE;
   return DEFAULT_TEXT_SIZE;
 }
 

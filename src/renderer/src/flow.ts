@@ -28,7 +28,9 @@ export function toNodes(board: Board, editingId: string | null, focusId: string 
                       ? 'swatchCard'
                       : card.type === 'shape'
                         ? 'shapeCard'
-                        : 'boardCard',
+                        : card.type === 'table'
+                          ? 'tableCard'
+                          : 'boardCard',
     hidden: board.cards.some((item) => item.type === 'column' && item.collapsed && item.childIds.includes(card.id)),
     zIndex: card.type === 'column' ? 0 : 2,
     dragHandle: card.type === 'column' ? '.column-handle' : undefined,

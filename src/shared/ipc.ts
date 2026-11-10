@@ -24,6 +24,8 @@ export const Ipc = {
   recentOpen: 'recent:open',
   exportPng: 'export:png',
   copyText: 'clipboard:copy-text',
+  takePendingOpen: 'doc:take-pending-open',
+  openRequest: 'doc:open-request',
 } as const;
 
 export type SaveResult =

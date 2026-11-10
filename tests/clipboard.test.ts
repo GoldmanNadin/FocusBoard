@@ -194,3 +194,45 @@ describe('shapes, swatches and curved lines', () => {
     expect(curved.ok && curved.doc.boards[0]!.lines[0]!.bend).toBe(40);
   });
 });
+
+import { snapRect } from '../src/shared/snap';
+import { addTableCard, addTableColumn, addTableRow, removeTableRow, setCell } from '../src/shared/table';
+
+describe('snapping and tables', () => {
+  it('snaps to the nearest edge or centre within the threshold only', () => {
+    const other = { x: 0, y: 0, width: 200, height: 100 };
+    expect(snapRect({ x: 303, y: 4, width: 100, height: 50 }, [other], 6)).toMatchObject({ x: 303, y: 0 });
+    expect(snapRect({ x: 47, y: 300, width: 100, height: 50 }, [other], 6)).toMatchObject({ x: 50, y: 300 });
+    expect(snapRect({ x: 320, y: 320, width: 100, height: 50 }, [other], 6)).toMatchObject({ x: 320, y: 320, guides: [] });
+  });
+
+  it('edits tables and keeps them valid', () => {
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addTableCard(doc, 'rootboard', { x: 0, y: 0 }));
+    const id = doc.boards[0]!.cards[0]!.id;
+    doc = docOf(setCell(doc, 'rootboard', id, 0, 1, 'Preis'));
+    doc = docOf(addTableRow(doc, 'rootboard', id));
+    doc = docOf(addTableColumn(doc, 'rootboard', id));
+    doc = docOf(removeTableRow(doc, 'rootboard', id));
+    const table = doc.boards[0]!.cards[0]!;
+    if (table.type !== 'table') throw new Error('no table');
+    expect(table.rows).toHaveLength(3);
+    expect(table.rows.every((row) => row.length === 4)).toBe(true);
+    expect(table.rows[0]![1]).toBe('Preis');
+    expect(validateDocument(serializeDocument(doc)).ok).toBe(true);
+    const raw = JSON.parse(serializeDocument(doc));
+    raw.boards[0].cards[0].rows[1].push('zu viel');
+    expect(validateDocument(JSON.stringify(raw)).ok).toBe(false);
+  });
+});
+
+import { freeSpot } from '../src/shared/snap';
+
+describe('placement', () => {
+  it('finds a free spot instead of stacking on an existing card', () => {
+    const taken = [{ x: 0, y: 0, width: 200, height: 100 }];
+    const spot = freeSpot({ x: 0, y: 0 }, { width: 100, height: 60 }, taken);
+    expect(spot.x >= 200 || spot.y >= 100).toBe(true);
+    expect(freeSpot({ x: 500, y: 500 }, { width: 100, height: 60 }, taken)).toEqual({ x: 500, y: 500 });
+  });
+});

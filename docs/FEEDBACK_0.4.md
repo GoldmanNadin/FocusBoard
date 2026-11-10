@@ -71,6 +71,21 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Neu eingebaut (sechster Schritt)
+
+Stand: 53 Unit-Tests und 41 Oberflächentests grün, zweimal hintereinander.
+
+| Bereich | Was jetzt geht |
+|---|---|
+| C9 Hilfslinien | Beim Ziehen einer Karte rastet sie an Kanten und Mitten anderer Karten ein (6 Bildschirmpixel), eine orange Linie zeigt die Ausrichtung. Mit gedrückter Alt-Taste wird frei platziert. Die eingerastete Position bleibt auch beim Loslassen erhalten. |
+| D3 PDF-Export | „Als PDF exportieren“ im Datei-Menü legt das ganze Board auf eine A4-Seite (Hoch- oder Querformat je nach Board), erzeugt in einem unsichtbaren, gesperrten Fenster. |
+| D4 Öffnen von außen | Eine Board-Datei (`.json` oder neu `.focusboard`) kann per „Öffnen mit“ oder durch Ziehen auf das Programmsymbol geöffnet werden. Ein zweiter Programmstart übergibt die Datei an das laufende Fenster (nur ein Fenster). Der Installer registriert `.focusboard`. Eine ins Fenster gezogene Board-Datei wird als ungespeicherte Kopie geladen. |
+| D2 Kommentar | Sprechblase für Anmerkungen (unter „Mehr“), eigener Stil, durchsuchbar. |
+| D2 Tabelle | Tabelle mit Kopfzeile (unter „Mehr“). Tab springt zur nächsten Zelle, Enter eine Zeile tiefer (in der letzten Zeile neue Zeile), ↑/↓ wechselt die Zeile. „+/− Zeile“ und „+/− Spalte“ erscheinen über der ausgewählten Tabelle. Höchstens 40 × 10, durchsuchbar, als Tab-Text kopierbar. |
+| Platzierung | Karten aus dem Menü „Mehr“ (Formen, Farbfeld, Tabelle, Kommentar, Sticker) landen nicht mehr übereinander, sondern suchen sich einen freien Platz nahe der Bildmitte. |
+| Schnelles Tippen | Tippt man sofort nach dem Anlegen einer Notiz, Form oder eines Kommentars los, gehen die ersten Buchstaben nicht mehr verloren. Vorher landete z. B. ein „B“ als Tastenkürzel im Werkzeug „Board“. |
+| „Mehr“-Menü | Misst sich nach dem Öffnen selbst und rückt hoch, bis es ganz ins Fenster passt. |
+
 ### Neu eingebaut (fünfter Schritt)
 
 Stand: 50 Unit-Tests und 38 Oberflächentests grün, zweimal hintereinander.
@@ -89,7 +104,7 @@ Stand: 50 Unit-Tests und 38 Oberflächentests grün, zweimal hintereinander.
 | „Mehr“-Menü | Zweispaltig, scrollt bei sehr kleinen Fenstern. |
 | Suche | Findet auch Formen und Farbfelder. |
 
-Noch offen: B3, B8, B10–B16, aus C Hilfslinien beim Ausrichten, aus D Datei-Anhang, Kommentar, Tabelle, Papierkorb, PDF-Export und Dateizuordnung (Doppelklick im Explorer). Außerdem ein Test auf echter Windows-Hardware.
+Noch offen: B3, B8, B10–B16, aus D Datei-Anhänge und ein Papierkorb über Sitzungen hinweg. Außerdem ein Test auf echter Windows-Hardware (Touchpad, Stift, 150 % Skalierung, Dateizuordnung im Explorer, SmartScreen).
 
 ## 0. Kurzfazit
 

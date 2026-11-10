@@ -21,8 +21,9 @@ import type { Board } from '../../../shared/model';
 import { toEdges, toNodes } from '../flow';
 import { columnAtPoint, insertionIndex } from '../../../shared/columns';
 import { bendFromPoint, curveControl } from '../../../shared/lines';
+import { snapRect, type Guide } from '../../../shared/snap';
 import { COLUMN_GAP, COLUMN_HEADER, COLUMN_PAD } from '../../../shared/limits';
-import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
+import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, ShapeCardNode, SketchCardNode, SwatchCardNode, TableCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
 
 const nodeTypes = {
   textCard: TextCardNode,
@@ -35,6 +36,7 @@ const nodeTypes = {
   sketchCard: SketchCardNode,
   swatchCard: SwatchCardNode,
   shapeCard: ShapeCardNode,
+  tableCard: TableCardNode,
 };
 
 export type PlacementApi = {
@@ -54,7 +56,7 @@ export function BoardCanvas(props: {
   tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'draw' | 'connect';
   lookup: CardLookup;
   placementRef: MutableRefObject<PlacementApi | null>;
-  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw', point: { x: number; y: number }) => void;
+  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw' | 'comment', point: { x: number; y: number }) => void;
   onPositions: (updates: { id: string; x: number; y: number }[]) => void;
   onSizes: (updates: { id: string; width: number; height: number }[]) => void;
   onDragStart: () => void;
@@ -140,7 +142,7 @@ function FlowSurface(props: {
   connect: boolean;
   tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'draw' | 'connect';
   placementRef: MutableRefObject<PlacementApi | null>;
-  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw', point: { x: number; y: number }) => void;
+  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw' | 'comment', point: { x: number; y: number }) => void;
   onPositions: (updates: { id: string; x: number; y: number }[]) => void;
   onSizes: (updates: { id: string; width: number; height: number }[]) => void;
   onDragStart: () => void;
@@ -175,6 +177,48 @@ function FlowSurface(props: {
   const [hint, setHint] = useState<{ x: number; y: number; w: number } | null>(null);
   const [endDrag, setEndDrag] = useState<{ lineId: string; end: 'source' | 'target'; x: number; y: number } | null>(null);
   const [bendDrag, setBendDrag] = useState<{ lineId: string; bend: number } | null>(null);
+  const [guides, setGuides] = useState<Guide[]>([]);
+  const altDown = useRef(false);
+  const lastSnap = useRef<{ id: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    const track = (event: KeyboardEvent) => {
+      altDown.current = event.altKey;
+    };
+    window.addEventListener('keydown', track);
+    window.addEventListener('keyup', track);
+    return () => {
+      window.removeEventListener('keydown', track);
+      window.removeEventListener('keyup', track);
+    };
+  }, []);
+
+  /** Snaps a single dragged card to its neighbours' edges and centres (hold Alt to place freely). */
+  function snapDrag(changes: NodeChange[]): NodeChange[] {
+    // The final position React Flow reports on release is not marked as dragging: keep the snapped spot.
+    const last = lastSnap.current;
+    if (last && changes.some((change) => change.type === 'position' && !change.dragging && change.id === last.id)) {
+      lastSnap.current = null;
+      return changes.map((change) =>
+        change.type === 'position' && !change.dragging && change.id === last.id && change.position ? { ...change, position: { x: last.x, y: last.y } } : change,
+      );
+    }
+    const dragged = changes.filter((change) => change.type === 'position' && change.dragging && change.position);
+    if (dragged.length !== 1 || altDown.current || hint) {
+      if (guides.length > 0) setGuides([]);
+      return changes;
+    }
+    const change = dragged[0] as Extract<NodeChange, { type: 'position' }>;
+    const board = props.board;
+    const card = board.cards.find((item) => item.id === change.id);
+    if (!card || !change.position || card.type === 'column') return changes;
+    const hidden = new Set(board.cards.flatMap((item) => (item.type === 'column' && item.collapsed ? item.childIds : [])));
+    const others = board.cards.filter((item) => item.id !== card.id && !hidden.has(item.id) && !(item.type !== 'column' && item.columnId));
+    const zoom = rf.getViewport().zoom || 1;
+    const snapped = snapRect({ x: change.position.x, y: change.position.y, width: card.width, height: card.height }, others, 6 / zoom);
+    setGuides(snapped.guides);
+    lastSnap.current = { id: card.id, x: snapped.x, y: snapped.y };
+    return changes.map((item) => (item === change ? { ...change, position: { x: snapped.x, y: snapped.y } } : item));
+  }
 
   function startBendDrag(event: ReactPointerEvent, line: { id: string; x1: number; y1: number; x2: number; y2: number }) {
     event.preventDefault();
@@ -276,7 +320,8 @@ function FlowSurface(props: {
     return () => shell.removeEventListener('wheel', onWheel);
   }, [rf]);
 
-  function onNodesChange(changes: NodeChange[]) {
+  function onNodesChange(incoming: NodeChange[]) {
+    const changes = snapDrag(incoming);
     const removals = changes.filter((change) => change.type === 'remove').map((change) => change.id);
     const rest = changes.filter((change) => change.type !== 'remove');
     props.setNodes((current) => applyNodeChanges(rest, current) as typeof current);
@@ -447,6 +492,12 @@ function FlowSurface(props: {
         }}
         onNodeDragStop={(event, node) => {
           setHint(null);
+          setGuides([]);
+          const snappedAt = lastSnap.current;
+          lastSnap.current = null;
+          if (snappedAt && snappedAt.id === node.id && (snappedAt.x !== node.position.x || snappedAt.y !== node.position.y)) {
+            props.onPositions([{ id: node.id, x: snappedAt.x, y: snappedAt.y }]);
+          }
           columnOrigin.current = null;
           const pointer = 'clientX' in event ? rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }) : node.position;
           props.onDragStop(node.id, pointer);
@@ -489,6 +540,18 @@ function FlowSurface(props: {
       >
         <ViewportPortal>
         {hint ? <div className="insert-line" style={{ left: hint.x, top: hint.y, width: hint.w }} /> : null}
+        {guides.map((guide, index) => (
+          <div
+            key={index}
+            className="snap-guide"
+            data-testid="snap-guide"
+            style={
+              guide.axis === 'x'
+                ? { left: guide.at, top: guide.from, width: 1, height: guide.to - guide.from }
+                : { left: guide.from, top: guide.at, width: guide.to - guide.from, height: 1 }
+            }
+          />
+        ))}
         <svg className="line-layer">
           {props.lines.map((raw) => {
             const shaped = bendDrag && bendDrag.lineId === raw.id ? { ...raw, bend: bendDrag.bend } : raw;

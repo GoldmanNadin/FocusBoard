@@ -1,7 +1,7 @@
 import { FORMAT, FORMAT_VERSION, NOTE_COLOR_ORDER, STICKER_KINDS } from './limits';
 
 export type HandleSide = 'top' | 'right' | 'bottom' | 'left';
-export type TextStyle = 'note' | 'heading' | 'subheading';
+export type TextStyle = 'note' | 'heading' | 'subheading' | 'comment';
 export type NoteColor = (typeof NOTE_COLOR_ORDER)[number];
 export type StickerKind = (typeof STICKER_KINDS)[number];
 export type ThemeName = 'light' | 'dark';
@@ -56,6 +56,12 @@ export type ShapeCard = Placed & {
   text: string;
 };
 
+export type TableCard = Placed & {
+  type: 'table';
+  /** rows[0] is the header row; every row has the same number of cells. */
+  rows: string[][];
+};
+
 export type ImageCard = Placed & {
   type: 'image';
   fileId: string;
@@ -95,7 +101,7 @@ export type ColumnCard = {
   childIds: string[];
 };
 
-export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard | SwatchCard | ShapeCard;
+export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard | SwatchCard | ShapeCard | TableCard;
 
 export type LineColor = NoteColor | 'ink';
 

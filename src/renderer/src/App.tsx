@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import {
   addColumn,
   addConnector,
@@ -28,6 +28,8 @@ import { normalizeUrl } from '../../shared/document';
 import { searchDocument, type SearchHit } from '../../shared/search';
 import { addSketchCard, addStroke, removeLastStroke } from '../../shared/sketch';
 import { addShapeCard, addSwatchCard, setShapeText, updateSwatch } from '../../shared/shapes';
+import { freeSpot } from '../../shared/snap';
+import { addTableCard, addTableColumn, addTableRow, removeTableColumn, removeTableRow, setCell } from '../../shared/table';
 import type { ShapeKind } from '../../shared/model';
 import { TEMPLATES, insertTemplate, type TemplateName } from '../../shared/templates';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
@@ -46,12 +48,12 @@ import {
   undoHistory,
   type History,
 } from '../../shared/history';
-import { NOTE_COLOR_NAMES, NOTE_COLOR_ORDER, NOTE_COLORS } from '../../shared/limits';
+import { NOTE_COLOR_NAMES, NOTE_COLOR_ORDER, NOTE_COLORS, defaultSizeFor } from '../../shared/limits';
 import type { LineAnchor, NoteColor, StickerKind, TextStyle, WhiteboardDocument } from '../../shared/model';
 import type { RecentBoard } from '../../shared/ipc';
 import { buildDemoDocument, drawSamplePng } from './demo';
 import { BoardCanvas, type PlacementApi } from './components/BoardCanvas';
-import type { CardLookup } from './components/cards';
+import { bufferEarlyTyping, clearEarlyTyping, requestCellFocus, type CardLookup } from './components/cards';
 import {
   IconArrow,
   IconBoard,
@@ -128,6 +130,15 @@ function Workbench() {
   const [centerRequest, setCenterRequest] = useState({ token: 0, x: 0, y: 0 });
   const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
   const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  // After opening, measure the menu and move it up just enough to fit inside the window.
+  useLayoutEffect(() => {
+    const menu = moreRef.current;
+    if (!moreOpen || !menu || !morePos) return;
+    const rect = menu.getBoundingClientRect();
+    const top = Math.max(8, Math.min(morePos.top, window.innerHeight - rect.height - 8));
+    if (top !== morePos.top) setMorePos({ ...morePos, top });
+  }, [moreOpen, morePos]);
   const histRef = useRef(hist);
   histRef.current = hist;
   const boardRef = useRef(boardId);
@@ -199,6 +210,7 @@ function Workbench() {
       setHist((history) => replacePresent(history, { ...history.present, theme: stored }));
     }
     refreshRecent();
+    void openPendingFile(false);
     void api.readRecovery().then((result) => {
       if (result.ok && !result.missing) setRecovery(result.json);
     });
@@ -261,6 +273,7 @@ function Workbench() {
   }
 
   function finishEdit() {
+    clearEarlyTyping();
     const before = editBefore.current;
     const editedId = editingRef.current;
     const fresh = freshCard.current;
@@ -306,7 +319,7 @@ function Workbench() {
     setMoreOpen(false);
   }
 
-  function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw', point: { x: number; y: number }) {
+  function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw' | 'comment', point: { x: number; y: number }) {
     if (kind === 'line') {
       placeLine(point);
       return;
@@ -359,7 +372,7 @@ function Workbench() {
       setTool('select');
       return;
     }
-    const style: TextStyle = kind === 'heading' || kind === 'subheading' ? kind : 'note';
+    const style: TextStyle = kind === 'heading' || kind === 'subheading' || kind === 'comment' ? kind : 'note';
     if (kind === 'subboard') {
         const result = addSubboard(histRef.current.present, boardRef.current, 'Neues Board', { x: point.x, y: point.y });
       if (!result.ok) {
@@ -497,6 +510,7 @@ function Workbench() {
         if (card.type === 'todo') return [card.title, ...card.items.map((item) => `${item.done ? '[x]' : '[ ]'} ${item.text}`)];
         if (card.type === 'link') return [card.url];
         if (card.type === 'shape') return [card.text];
+        if (card.type === 'table') return [card.rows.map((row) => row.join('\t')).join('\n')];
         if (card.type === 'swatch') return [`${card.label} ${card.color.toUpperCase()}`.trim()];
         if (card.type === 'column') return [card.title];
         if (card.type === 'board') return [getBoard(histRef.current.present, card.boardId)?.title ?? ''];
@@ -566,6 +580,11 @@ function Workbench() {
 
   /** Adds dropped or pasted image files in a loose grid, keeping each picture's aspect ratio. */
   async function addImageFiles(files: File[], at: { x: number; y: number }) {
+    const board = files.find((file) => /\.(json|focusboard)$/i.test(file.name));
+    if (board) {
+      void openDroppedBoard(board);
+      return;
+    }
     const images = files.filter((file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type));
     if (images.length === 0) {
       setBanner(files.length > 0 ? 'Nur PNG, JPEG, GIF und WebP können als Bild eingefügt werden.' : 'Nichts zum Einfügen.');
@@ -638,6 +657,36 @@ function Workbench() {
     return false;
   }
 
+  /** Opens the board file the program was started with (or that a second start handed over). */
+  async function openPendingFile(askFirst: boolean) {
+    if (askFirst && !(await confirmIfDirty())) return;
+    const opened = await api.takePendingOpen();
+    if (!opened.ok) {
+      setBanner(opened.error);
+      return;
+    }
+    if (opened.canceled) return;
+    loadJson(opened.json, opened.fileName, false);
+    refreshRecent();
+  }
+
+  /** A board file dropped into the window is loaded as an unsaved copy (its folder is unknown here). */
+  async function openDroppedBoard(file: File) {
+    if (!(await confirmIfDirty())) return;
+    if (file.size > 40 * 1024 * 1024) {
+      setBanner('Die Datei ist zu groß (höchstens 40 MB).');
+      return;
+    }
+    const json = await file.text();
+    const validated = validateDocument(json);
+    if (!validated.ok) {
+      setBanner(validated.error);
+      return;
+    }
+    loadJson(json, null, true);
+    showToast(`„${file.name}“ geladen – mit „Speichern unter“ sichern`);
+  }
+
   function refreshRecent() {
     void api.listRecent().then(setRecent, () => setRecent([]));
   }
@@ -657,7 +706,7 @@ function Workbench() {
     refreshRecent();
   }
 
-  async function exportImage() {
+  async function exportImage(format: 'png' | 'pdf' = 'png') {
     setFileOpen(false);
     finishEdit();
     const placement = placementRef.current;
@@ -672,11 +721,11 @@ function Workbench() {
     const before = await placement.fitAll();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const rect = flow.getBoundingClientRect();
-    const result = await api.exportPng({ x: rect.left, y: rect.top, width: rect.width, height: rect.height, name: current.title });
+    const result = await api.exportPng({ x: rect.left, y: rect.top, width: rect.width, height: rect.height, name: current.title, format });
     document.documentElement.classList.remove('exporting');
     placement.restore(before);
     if (!result.ok) setBanner(result.error);
-    else if (!result.canceled) showToast(`Als Bild gespeichert: ${result.fileName}`);
+    else if (!result.canceled) showToast(`${format === 'pdf' ? 'Als PDF' : 'Als Bild'} gespeichert: ${result.fileName}`);
   }
 
   function jumpTo(hit: SearchHit) {
@@ -718,6 +767,10 @@ function Workbench() {
       void addImage(point);
       return;
     }
+    if (name === 'table') {
+      addFromMore('table', point);
+      return;
+    }
     if (name === 'swatch' || name === 'shape:rect' || name === 'shape:ellipse' || name === 'shape:diamond') {
       addFromMore(name === 'swatch' ? 'swatch' : (name.slice('shape:'.length) as ShapeKind), point);
       return;
@@ -727,18 +780,23 @@ function Workbench() {
       addStickerAt(kind, point);
       return;
     }
-    if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line' || name === 'link' || name === 'subboard' || name === 'draw') {
+    if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line' || name === 'link' || name === 'subboard' || name === 'draw' || name === 'comment') {
       createAt(name, point);
     }
   }
 
   /** Places a swatch or shape (from the More menu or by dragging it out) and opens it for editing. */
-  function addFromMore(kind: 'swatch' | ShapeKind, point?: { x: number; y: number }) {
+  function addFromMore(kind: 'swatch' | 'table' | ShapeKind, point?: { x: number; y: number }) {
     setMoreOpen(false);
     finishEdit();
     const center = point ?? placementRef.current?.center() ?? { x: 180, y: 140 };
-    const at = point ?? { x: center.x - 90, y: center.y - 80 };
-    const result = kind === 'swatch' ? addSwatchCard(histRef.current.present, boardRef.current, at) : addShapeCard(histRef.current.present, boardRef.current, kind, at, noteColor);
+    const size = defaultSizeFor(kind === 'swatch' ? 'swatch' : kind === 'table' ? 'table' : 'shape');
+    // From the menu (no drop point) the card looks for a free spot near the middle of the view.
+    const at = point ?? freeSpot({ x: center.x - size.width / 2, y: center.y - size.height / 2 }, size, current.cards.filter((card) => !(card.type !== 'column' && card.columnId)));
+    const result =
+      kind === 'swatch' ? addSwatchCard(histRef.current.present, boardRef.current, at)
+      : kind === 'table' ? addTableCard(histRef.current.present, boardRef.current, at)
+      : addShapeCard(histRef.current.present, boardRef.current, kind, at, noteColor);
     if (!result.ok) {
       setBanner(result.error);
       return;
@@ -748,13 +806,14 @@ function Workbench() {
     commit(settled.ok ? settled.doc : result.doc);
     if (created) {
       setFocusId(created.id);
-      beginEdit(created.id);
+      if (kind === 'table') requestCellFocus(created.id, 0, 0);
+      else beginEdit(created.id);
     }
   }
 
   function addStickerAt(kind: StickerKind, point?: { x: number; y: number }) {
     const center = point ?? placementRef.current?.center() ?? { x: 180, y: 140 };
-    const position = point ?? placementTopLeft(center, { width: 104, height: 104 }, getBoard(histRef.current.present, boardRef.current)?.cards.length ?? 0);
+    const position = point ?? freeSpot({ x: center.x - 52, y: center.y - 52 }, { width: 104, height: 104 }, current.cards);
     const result = addSticker(histRef.current.present, boardRef.current, kind, position);
     if (!result.ok) {
       setBanner(result.error);
@@ -943,6 +1002,24 @@ function Workbench() {
         if (result.ok) live(result.doc);
       },
       notify: (text) => showToast(text),
+      table: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        return card?.type === 'table' ? card : undefined;
+      },
+      setCell: (id, row, col, text) => {
+        const result = setCell(histRef.current.present, boardRef.current, id, row, col, text);
+        if (result.ok) live(result.doc);
+      },
+      tableOp: (id, op) => {
+        finishEdit();
+        const present = histRef.current.present;
+        const result =
+          op === 'addRow' ? addTableRow(present, boardRef.current, id)
+          : op === 'addColumn' ? addTableColumn(present, boardRef.current, id)
+          : op === 'removeRow' ? removeTableRow(present, boardRef.current, id)
+          : removeTableColumn(present, boardRef.current, id);
+        if (result.ok && !sameContent(result.doc, present)) commit(withColumnsRelaid(result.doc, boardRef.current, [id]));
+      },
       copyText: (text) => {
         void api.copyText(text).then((ok) => showToast(ok ? `${text} kopiert` : 'Kopieren nicht möglich'));
       },
@@ -1006,6 +1083,13 @@ function Workbench() {
       }
       if (typing) return;
       const meta = event.ctrlKey || event.metaKey;
+      // A card was just created and its editor is not on screen yet: keep the keys for it.
+      const editedCard = editingRef.current ? current.cards.find((item) => item.id === editingRef.current) : undefined;
+      if (editedCard && (editedCard.type === 'text' || editedCard.type === 'shape') && !meta && !event.altKey && event.key.length === 1) {
+        event.preventDefault();
+        bufferEarlyTyping(event.key);
+        return;
+      }
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLine) {
         event.preventDefault();
         const result = deleteLines(histRef.current.present, current.id, [selectedLine]);
@@ -1137,6 +1221,7 @@ function Workbench() {
       api.onMenuSave(() => void save(false)),
       api.onMenuSaveAs(() => void save(true)),
       api.onSaveAndClose(() => void save(false).then((ok) => { if (ok) api.approveClose(); })),
+      api.onOpenRequest(() => void openPendingFile(true)),
       api.onMenuCommand((command) => {
         const typing = isTypingTarget(document.activeElement);
         if (command === 'undo') {
@@ -1257,7 +1342,8 @@ function Workbench() {
                 <button type="button" onClick={() => void openDocument()}>Öffnen</button>
                 <button type="button" onClick={() => void save(false)}>Speichern</button>
                 <button type="button" onClick={() => void save(true)}>Speichern unter</button>
-                <button type="button" data-testid="export-png" onClick={() => void exportImage()}>Als Bild exportieren (PNG)</button>
+                <button type="button" data-testid="export-png" onClick={() => void exportImage('png')}>Als Bild exportieren (PNG)</button>
+                <button type="button" data-testid="export-pdf" onClick={() => void exportImage('pdf')}>Als PDF exportieren</button>
                 {recent.length > 0 ? <p className="menu-kicker">Zuletzt geöffnet</p> : null}
                 {recent.map((entry) => (
                   <button key={entry.path} type="button" className="recent-entry" data-testid="recent-entry" disabled={!entry.exists} title={entry.path} onClick={() => void openRecentBoard(entry)}>
@@ -1326,7 +1412,7 @@ function Workbench() {
             onClick={(event) => {
               // The menu is fixed to the window so the scrolling toolbar cannot clip it.
               const rect = event.currentTarget.getBoundingClientRect();
-              const top = Math.max(8, Math.min(rect.top, window.innerHeight - 280));
+              const top = Math.max(8, rect.top);
               setMorePos({ left: rect.right + 8, top });
               setMoreOpen((open) => !open);
             }}
@@ -1334,7 +1420,7 @@ function Workbench() {
             <IconMore />
           </ToolButton>
           {moreOpen ? (
-            <div className="more-pop" role="menu" data-testid="more-menu" style={morePos ?? undefined}>
+            <div className="more-pop" role="menu" data-testid="more-menu" ref={moreRef} style={morePos ?? undefined}>
               <button type="button" data-testid="more-board" onClick={() => { chooseTool('subboard'); }}>Unterboard</button>
               <div className="template-row">
                 <p>Formen und Farbe</p>
@@ -1358,6 +1444,28 @@ function Workbench() {
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  draggable
+                  data-testid="more-table"
+                  onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', 'table')}
+                  onClick={() => addFromMore('table')}
+                >
+                  Tabelle
+                </button>
+                <button
+                  type="button"
+                  draggable
+                  data-testid="more-comment"
+                  onDragStart={(event) => event.dataTransfer.setData('application/x-whiteboard-tool', 'comment')}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    const center = placementRef.current?.center() ?? { x: 180, y: 140 };
+                    createAt('comment', freeSpot({ x: center.x - 110, y: center.y - 32 }, { width: 220, height: 64 }, current.cards));
+                  }}
+                >
+                  Kommentar
+                </button>
                 <button
                   type="button"
                   draggable

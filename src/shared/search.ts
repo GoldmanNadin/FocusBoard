@@ -4,18 +4,19 @@ export type SearchHit = {
   boardId: string;
   boardTitle: string;
   cardId: string | null;
-  kind: 'Board' | 'Notiz' | 'Überschrift' | 'Liste' | 'Spalte' | 'Link' | 'Form' | 'Farbe';
+  kind: 'Board' | 'Notiz' | 'Kommentar' | 'Überschrift' | 'Liste' | 'Spalte' | 'Link' | 'Form' | 'Farbe' | 'Tabelle';
   text: string;
   center: { x: number; y: number } | null;
 };
 
 function cardTexts(card: Card, boardTitle: (id: string) => string): { kind: SearchHit['kind']; text: string }[] {
-  if (card.type === 'text') return [{ kind: card.style === 'note' ? 'Notiz' : 'Überschrift', text: card.text }];
+  if (card.type === 'text') return [{ kind: card.style === 'note' ? 'Notiz' : card.style === 'comment' ? 'Kommentar' : 'Überschrift', text: card.text }];
   if (card.type === 'todo') return [{ kind: 'Liste', text: [card.title, ...card.items.map((item) => item.text)].join(' · ') }];
   if (card.type === 'column') return [{ kind: 'Spalte', text: card.title }];
   if (card.type === 'link') return [{ kind: 'Link', text: `${card.title} ${card.url}` }];
   if (card.type === 'board') return [{ kind: 'Board', text: boardTitle(card.boardId) }];
   if (card.type === 'shape') return [{ kind: 'Form', text: card.text }];
+  if (card.type === 'table') return [{ kind: 'Tabelle', text: card.rows.map((row) => row.filter(Boolean).join(' | ')).filter(Boolean).join(' · ') }];
   if (card.type === 'swatch') return [{ kind: 'Farbe', text: `${card.label} ${card.color.toUpperCase()}`.trim() }];
   return [];
 }

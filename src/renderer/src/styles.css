@@ -429,3 +429,20 @@ html.exporting .zoom-dock, html.exporting .react-flow__minimap, html.exporting .
 /* Keep the colour bar clear of the zoom dock in the bottom-right corner. */
 .color-bar { bottom: 84px; }
 .toast { bottom: 148px; }
+
+.snap-guide { position: absolute; z-index: 6; pointer-events: none; background: #e8590c; }
+
+.text-comment { background: #fff8d6; color: #3a2f12; border: 1px solid #ecd98a; border-radius: 16px 16px 16px 4px; font-family: var(--sans); box-shadow: var(--shadow); }
+.text-comment::before { content: "💬"; position: absolute; left: -10px; top: -10px; font-size: 16px; }
+.text-comment .card-copy, .text-comment .card-editor, .text-comment .card-measure { font-size: 14px; line-height: 1.35; }
+html[data-theme="dark"] .text-comment { background: #3a3420; color: #fff3c4; border-color: #6b5d2a; }
+
+.card-table { padding: 4px 8px 8px; }
+.card-table table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.card-table td { border: 1px solid var(--line); padding: 0; height: 34px; }
+.card-table tr.is-head td { background: var(--toolbar); }
+.card-table tr.is-head input { font-weight: 700; }
+.card-table input { width: 100%; height: 100%; border: 0; background: transparent; padding: 4px 6px; color: var(--ink); font-size: 14px; }
+.card-table input:focus-visible { outline: 2px solid #ff9a2e; outline-offset: -2px; }
+.table-tools { position: absolute; left: 0; bottom: calc(100% + 6px); display: flex; gap: 4px; padding: 4px; background: var(--chrome); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); z-index: 10; }
+.table-tools button { border: 1px solid var(--line); background: var(--chrome); border-radius: 8px; padding: 2px 8px; font-size: 13px; }
