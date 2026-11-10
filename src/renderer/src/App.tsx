@@ -1636,7 +1636,7 @@ function Workbench() {
             <IconMore />
           </ToolButton>
           {moreOpen ? (
-            <div className="more-pop" role="menu" data-testid="more-menu" ref={moreRef} style={morePos ?? undefined}>
+            <div className="more-pop" role="dialog" aria-label="Weitere Werkzeuge, Formen, Vorlagen und Sticker" data-testid="more-menu" ref={moreRef} style={morePos ?? undefined}>
               <button type="button" data-testid="more-board" onClick={() => { chooseTool('subboard'); }}>Unterboard</button>
               <div className="template-row">
                 <p>Formen und Farbe</p>
@@ -2126,6 +2126,10 @@ function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: (
           autoFocus
           data-testid="palette-input"
           aria-label="Befehl suchen"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="palette-list"
+          aria-activedescendant={shown[active] ? `palette-${shown[active]!.id}` : undefined}
           placeholder="Befehl suchen … (z. B. „pdf“, „spalte“, „dunkel“)"
           value={query}
           onChange={(event) => {
@@ -2148,15 +2152,23 @@ function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: (
             }
           }}
         />
-        <ul className="palette-list" role="listbox">
-          {shown.length === 0 ? <li className="search-empty">Kein Befehl gefunden.</li> : null}
+        {shown.length === 0 ? <p className="search-empty">Kein Befehl gefunden.</p> : null}
+        {/* The input keeps the focus; ↑/↓ move the active option, Enter runs it (combobox pattern). */}
+        <ul className="palette-list" role="listbox" id="palette-list" aria-label="Befehle">
           {shown.map((command, index) => (
-            <li key={command.id} role="option" aria-selected={index === active}>
-              <button type="button" data-testid="palette-item" className={index === active ? 'is-active' : undefined} onMouseEnter={() => setActive(index)} onClick={() => run(command)}>
-                <span className="palette-group">{command.group}</span>
-                <span className="palette-label">{command.label}</span>
-                {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
-              </button>
+            <li
+              key={command.id}
+              id={`palette-${command.id}`}
+              role="option"
+              aria-selected={index === active}
+              data-testid="palette-item"
+              className={index === active ? 'is-active' : undefined}
+              onMouseEnter={() => setActive(index)}
+              onClick={() => run(command)}
+            >
+              <span className="palette-group">{command.group}</span>
+              <span className="palette-label">{command.label}</span>
+              {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
             </li>
           ))}
         </ul>
@@ -2243,7 +2255,8 @@ function ContextMenu({
     </button>
   );
   return (
-    <div className="context-menu" role="menu" data-testid="context-menu" ref={ref} style={{ left: Math.max(4, left), top: Math.max(4, top) }}>
+    <div role="region" aria-label="Kontextmenü">
+    <div className="context-menu" role="menu" aria-label={state.target.kind === 'card' ? 'Aktionen für die Auswahl' : 'Aktionen für die Fläche'} data-testid="context-menu" ref={ref} style={{ left: Math.max(4, left), top: Math.max(4, top) }}>
       {state.target.kind === 'card' ? (
         <>
           {single && ['text', 'board', 'link', 'shape', 'swatch', 'sketch'].includes(single.type) ? item('edit', single.type === 'board' ? 'Umbenennen' : 'Bearbeiten', 'F2') : null}
@@ -2252,7 +2265,7 @@ function ContextMenu({
           {notes ? (
             <div className="menu-colors" role="group" aria-label="Notizfarbe">
               {NOTE_COLOR_ORDER.map((color) => (
-                <button key={color} type="button" className="swatch" aria-label={COLOR_NAMES[color]} data-testid={`menu-color-${color}`} style={{ background: colorFill(color) }} onClick={() => onAction('color', color)} />
+                <button key={color} type="button" role="menuitem" className="swatch" aria-label={`Farbe ${COLOR_NAMES[color]}`} data-testid={`menu-color-${color}`} style={{ background: colorFill(color) }} onClick={() => onAction('color', color)} />
               ))}
             </div>
           ) : null}
@@ -2273,6 +2286,7 @@ function ContextMenu({
           {item('selectAll', 'Alles auswählen', 'Strg+A')}
         </>
       )}
+    </div>
     </div>
   );
 }

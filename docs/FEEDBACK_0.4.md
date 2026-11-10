@@ -71,6 +71,16 @@ Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
 | C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
 | D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
 
+### Zwölfter Schritt: unabhängige Prüfung mit axe-core
+
+Als Prüfung, die nicht aus den eigenen Tests stammt, läuft jetzt **axe-core 4.10** (Regelwerk WCAG 2.1, weit verbreitet in Barrierefreiheits-Audits) über sechs Zustände: leeres Board, Menü „Mehr“, Board mit Karten und Auswahl, Rechtsklick-Menü, Befehlssuche, dunkles Thema (`tests/e2e/a11y.spec.ts`).
+
+- **Bestanden ohne Änderung:** Farbkontraste in Hell und Dunkel, Beschriftungen aller Werkzeuge und Eingabefelder, Karten, Tabellen und Listen.
+- **Gefunden und behoben:** Das Menü „Mehr“ und das Rechtsklick-Menü waren als ARIA-Menüs ausgezeichnet, enthielten aber Elemente ohne Menü-Rolle (kritisch für Bildschirmleser). Die Befehlssuche hatte verschachtelte Bedienelemente und eine Liste ohne Namen (schwerwiegend). Sie folgt jetzt dem Combobox-Muster: Der Fokus bleibt im Eingabefeld, die aktive Zeile wird angesagt.
+- **Ergebnis:** 0 Befunde in allen sechs Zuständen, 10 Wiederholungen. Der Test bleibt Teil der Suite, damit neue Verstöße auffallen.
+
+Stand: 55 Unit-Tests und 52 Oberflächentests grün.
+
 ### Elfter Schritt: Befehlssuche, Einführung, aufgeräumte Leiste
 
 Stand: 55 Unit-Tests und 51 Oberflächentests grün, dreimal hintereinander. Die Empfehlungen aus der Heuristik-Prüfung (Punkte 7, 8 und 10) sind umgesetzt:
