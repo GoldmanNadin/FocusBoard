@@ -18,6 +18,8 @@ export const Ipc = {
   recoveryWrite: 'recovery:write',
   recoveryClear: 'recovery:clear',
   e2eFixture: 'e2e:fixture',
+  openExternal: 'link:open',
+  menuCommand: 'menu:command',
 } as const;
 
 export type SaveResult =

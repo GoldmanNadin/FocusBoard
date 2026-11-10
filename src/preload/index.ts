@@ -74,6 +74,16 @@ const api = {
   clearRecovery(): Promise<{ ok: true }> {
     return ipcRenderer.invoke(Ipc.recoveryClear);
   },
+  openExternal(url: string): Promise<boolean> {
+    return ipcRenderer.invoke(Ipc.openExternal, typeof url === 'string' ? url : '');
+  },
+  onMenuCommand(callback: (command: string) => void): () => void {
+    const listener = (_event: unknown, command: unknown) => {
+      if (typeof command === 'string') callback(command);
+    };
+    ipcRenderer.on(Ipc.menuCommand, listener);
+    return () => ipcRenderer.removeListener(Ipc.menuCommand, listener);
+  },
   loadFixture(): Promise<FixtureResult> {
     return ipcRenderer.invoke(Ipc.e2eFixture);
   },

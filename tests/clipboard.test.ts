@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+import { addColumn, addImageCard, addSubboard, addTextCard, createEmptyDocument, imageCardSize } from '../src/shared/boardOps';
+import { addLinkCard, copyCards, pasteClip, reorderCards, updateLink } from '../src/shared/clipboard';
+import { placeInColumn } from '../src/shared/columns';
+import { normalizeUrl, serializeDocument, validateDocument } from '../src/shared/document';
+import { addCanvasLine } from '../src/shared/lines';
+import type { WhiteboardDocument } from '../src/shared/model';
+
+function docOf(result: { ok: true; doc: WhiteboardDocument } | { ok: false; error: string }): WhiteboardDocument {
+  if (!result.ok) throw new Error(result.error);
+  return result.doc;
+}
+
+const PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+function sample(): WhiteboardDocument {
+  let doc = createEmptyDocument({ rootId: 'rootboard' });
+  doc = docOf(addTextCard(doc, 'rootboard', 'Eins', { x: 0, y: 0 }, { cardId: 'textcard1' }));
+  doc = docOf(addTextCard(doc, 'rootboard', 'Zwei', { x: 400, y: 0 }, { cardId: 'textcard2' }));
+  doc = docOf(addCanvasLine(doc, 'rootboard', { kind: 'card', cardId: 'textcard1', side: 'right', t: 0.5 }, { kind: 'card', cardId: 'textcard2', side: 'left', t: 0.5 }, { id: 'lineone01' }));
+  doc = docOf(addSubboard(doc, 'rootboard', 'Projekt', { x: 0, y: 300 }, { cardId: 'boardcard1', boardId: 'childboard' }));
+  doc = docOf(addImageCard(doc, 'childboard', { fileName: 'a.png', dataUrl: PNG }, { x: 0, y: 0 }, { cardId: 'imagecard1', fileId: 'imagefile1' }));
+  doc = docOf(addColumn(doc, 'rootboard', { x: 800, y: 0 }, { cardId: 'column001' }));
+  doc = docOf(addTextCard(doc, 'rootboard', 'In Spalte', { x: 1200, y: 0 }, { cardId: 'textcard3' }));
+  doc = docOf(placeInColumn(doc, 'rootboard', 'textcard3', 'column001', 0));
+  return doc;
+}
+
+describe('clipboard, links and ordering', () => {
+  it('copies cards with the line between them and pastes them at the pointer with new ids', () => {
+    const doc = sample();
+    const clip = copyCards(doc, 'rootboard', ['textcard1', 'textcard2'])!;
+    expect(clip.lines).toHaveLength(1);
+    const result = pasteClip(doc, 'rootboard', clip, { x: 1000, y: 1000 });
+    if (!result.ok) throw new Error(result.error);
+    const root = result.doc.boards.find((board) => board.id === 'rootboard')!;
+    const pasted = root.cards.filter((card) => result.cardIds.includes(card.id));
+    expect(pasted.map((card) => [card.x, card.y])).toEqual([[1000, 1000], [1400, 1000]]);
+    expect(result.cardIds).not.toContain('textcard1');
+    const newLine = root.lines.at(-1)!;
+    expect(newLine.source.kind === 'card' && result.cardIds.includes(newLine.source.cardId)).toBe(true);
+    expect(validateDocument(serializeDocument(result.doc)).ok).toBe(true);
+  });
+
+  it('pasting a sub-board copies its whole content, sharing the image file', () => {
+    const doc = sample();
+    const clip = copyCards(doc, 'rootboard', ['boardcard1'])!;
+    const result = pasteClip(doc, 'rootboard', clip, { x: 0, y: 600 });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.doc.boards).toHaveLength(doc.boards.length + 1);
+    expect(result.doc.files).toHaveLength(1);
+    const copy = result.doc.boards.at(-1)!;
+    expect(copy.id).not.toBe('childboard');
+    expect(copy.parentBoardId).toBe('rootboard');
+    expect(copy.cards[0]!.type).toBe('image');
+    expect(validateDocument(serializeDocument(result.doc)).ok).toBe(true);
+  });
+
+  it('copying a column brings its cards and keeps them stacked', () => {
+    const doc = sample();
+    const clip = copyCards(doc, 'rootboard', ['column001'])!;
+    expect(clip.cards.map((card) => card.id).sort()).toEqual(['column001', 'textcard3']);
+    const result = pasteClip(doc, 'rootboard', clip, { x: 0, y: 2000 });
+    if (!result.ok) throw new Error(result.error);
+    expect(validateDocument(serializeDocument(result.doc)).ok).toBe(true);
+  });
+
+  it('pastes into another document and brings the image along', () => {
+    const doc = sample();
+    const clip = copyCards(doc, 'childboard', ['imagecard1'])!;
+    const other = createEmptyDocument({ rootId: 'otherroot' });
+    const result = pasteClip(other, 'otherroot', clip, { x: 10, y: 10 });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.doc.files).toHaveLength(1);
+    expect(validateDocument(serializeDocument(result.doc)).ok).toBe(true);
+  });
+
+  it('accepts only web addresses for links', () => {
+    expect(normalizeUrl('example.com')).toBe('https://example.com/');
+    expect(normalizeUrl('http://localhost:3000/x')).toBe('http://localhost:3000/x');
+    for (const bad of ['javascript:alert(1)', 'file:///C:/Windows', 'hallo welt', '', 'mailto:a@b.de']) expect(normalizeUrl(bad)).toBeNull();
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addLinkCard(doc, 'rootboard', 'www.example.org/a', { x: 0, y: 0 }, { cardId: 'linkcard1' }));
+    const link = doc.boards[0]!.cards[0]!;
+    expect(link).toMatchObject({ type: 'link', url: 'https://www.example.org/a', title: 'example.org' });
+    expect(updateLink(doc, 'rootboard', 'linkcard1', { url: 'javascript:void(0)' }).ok).toBe(false);
+    expect(validateDocument(serializeDocument(doc)).ok).toBe(true);
+    const tampered = serializeDocument(doc).replace('https://www.example.org/a', 'javascript:alert(1)');
+    expect(validateDocument(tampered).ok).toBe(false);
+  });
+
+  it('keeps the picture aspect ratio for image cards', () => {
+    expect(imageCardSize({ width: 2000, height: 1000 })).toEqual({ width: 280, height: 140 });
+    expect(imageCardSize({ width: 1000, height: 2000 })).toEqual({ width: 140, height: 280 });
+    const wide = imageCardSize({ width: 4000, height: 400 });
+    expect(wide.height).toBeGreaterThanOrEqual(96);
+    expect(wide.width / wide.height).toBeCloseTo(10, 0);
+  });
+
+  it('brings cards to the front and sends them to the back', () => {
+    const doc = sample();
+    const front = docOf(reorderCards(doc, 'rootboard', ['textcard1'], 'front'));
+    expect(front.boards[0]!.cards.at(-1)!.id).toBe('textcard1');
+    const back = docOf(reorderCards(front, 'rootboard', ['textcard1'], 'back'));
+    expect(back.boards[0]!.cards[0]!.id).toBe('textcard1');
+  });
+});

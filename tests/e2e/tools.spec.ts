@@ -1,0 +1,243 @@
+import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+// New tools and gestures from docs/FEEDBACK_0.4.md, section D1/D2.
+
+async function launch() {
+  const userData = mkdtempSync(path.join(tmpdir(), 'whiteboard-tools-'));
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: { ...process.env, WHITEBOARD_E2E: '1', WHITEBOARD_USER_DATA: userData },
+  });
+  const page = await app.firstWindow();
+  await page.getByTestId('tool-note').waitFor({ timeout: 30_000 });
+  return { app, page };
+}
+
+async function pane(page: Page) {
+  const box = await page.locator('.react-flow__pane').boundingBox();
+  if (!box) throw new Error('Fläche fehlt');
+  return box;
+}
+
+async function addNote(page: Page, x: number, y: number, text: string) {
+  await page.getByTestId('tool-note').click();
+  const b = await pane(page);
+  await page.mouse.click(b.x + x, b.y + y);
+  await page.getByTestId('card-editor').waitFor();
+  await page.keyboard.type(text);
+  await page.keyboard.press('Escape');
+}
+
+async function writeClipboard(app: ElectronApplication, kind: 'text' | 'image', value: string) {
+  await app.evaluate(({ clipboard, nativeImage }, [k, v]) => {
+    if (k === 'text') clipboard.writeText(v);
+    else clipboard.writeImage(nativeImage.createFromDataURL(v));
+  }, [kind, value] as const);
+}
+
+/** 200 × 100 PNG drawn in the page, so the test has a real picture with a known aspect ratio. */
+async function widePng(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 100;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#2f5d9b';
+    ctx.fillRect(0, 0, 200, 100);
+    return canvas.toDataURL('image/png');
+  });
+}
+
+test('toolbar shows labels, empty boards explain what to do', async () => {
+  const { app, page } = await launch();
+  await expect(page.getByTestId('empty-hint')).toBeVisible();
+  for (const label of ['Notiz', 'Titel', 'Bild', 'Link', 'Board', 'Spalte', 'Liste', 'Linie']) {
+    await expect(page.locator('.tool-label', { hasText: new RegExp(`^${label}$`) })).toBeVisible();
+  }
+  await expect(page.getByTestId('tool-note')).toHaveAttribute('title', 'Notiz (N)');
+  const b = await pane(page);
+  await page.mouse.dblclick(b.x + 200, b.y + 150);
+  await expect(page.getByTestId('card-editor')).toBeFocused();
+  await page.keyboard.type('Per Doppelklick');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.text-note')).toHaveCount(1);
+  await expect(page.getByTestId('empty-hint')).toHaveCount(0);
+  await app.close();
+});
+
+test('copy, paste, duplicate and undo cards', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Original');
+  await page.locator('.text-note').click();
+  await page.keyboard.press('Control+C');
+  const b = await pane(page);
+  await page.mouse.move(b.x + 600, b.y + 400);
+  await page.keyboard.press('Control+V');
+  await expect(page.locator('.text-note')).toHaveCount(2);
+  await expect(page.locator('.text-note', { hasText: 'Original' })).toHaveCount(2);
+  await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);
+  await page.keyboard.press('Control+D');
+  await expect(page.locator('.text-note')).toHaveCount(3);
+  await page.keyboard.press('Control+Z');
+  await expect(page.locator('.text-note')).toHaveCount(2);
+  await page.locator('.react-flow__node:has(.text-note)').last().click();
+  await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);
+  await page.keyboard.press('Control+X');
+  await expect(page.locator('.text-note')).toHaveCount(1);
+  await page.keyboard.press('Control+V');
+  await expect(page.locator('.text-note')).toHaveCount(2);
+  await app.close();
+});
+
+test('pasting text makes a note, a web address makes a link card', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.mouse.move(b.x + 300, b.y + 200);
+  await writeClipboard(app, 'text', 'Aus der Zwischenablage');
+  await page.keyboard.press('Control+V');
+  await expect(page.locator('.text-note', { hasText: 'Aus der Zwischenablage' })).toBeVisible();
+  await page.mouse.move(b.x + 700, b.y + 200);
+  await writeClipboard(app, 'text', 'www.example.com/seite');
+  await page.keyboard.press('Control+V');
+  await expect(page.locator('.card-link')).toHaveAttribute('data-url', 'https://www.example.com/seite');
+  await expect(page.locator('.card-link .link-title')).toHaveText('example.com');
+  await app.close();
+});
+
+test('pasting and dropping pictures keeps their aspect ratio', async () => {
+  const { app, page } = await launch();
+  const png = await widePng(page);
+  const b = await pane(page);
+  await page.mouse.move(b.x + 200, b.y + 150);
+  await writeClipboard(app, 'image', png);
+  await page.keyboard.press('Control+V');
+  const node = page.locator('.react-flow__node:has(.card-image)');
+  await expect(node).toHaveCount(1);
+  const box = await node.boundingBox();
+  expect(box!.width / box!.height).toBeCloseTo(2, 1);
+
+  await page.evaluate(
+    async ([dataUrl, x, y]) => {
+      const blob = await (await fetch(dataUrl)).blob();
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([blob], 'foto.png', { type: 'image/png' }));
+      transfer.items.add(new File([blob], 'zweites.png', { type: 'image/png' }));
+      const target = document.querySelector('.flow-shell')!;
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer }));
+    },
+    [png, b.x + 500, b.y + 300] as const,
+  );
+  await expect(node).toHaveCount(3);
+  await app.close();
+});
+
+test('link tool asks for an address and refuses non-web addresses', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.keyboard.press('k');
+  await expect(page.getByTestId('tool-link')).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.click(b.x + 300, b.y + 200);
+  const input = page.getByTestId('link-input');
+  await expect(input).toBeFocused();
+  await input.fill('javascript:alert(1)');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.link-error')).toBeVisible();
+  await input.fill('example.org');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('link-prompt')).toHaveCount(0);
+  const card = page.locator('.card-link');
+  await expect(card).toHaveAttribute('data-url', 'https://example.org/');
+  await page.getByTestId('open-link').click();
+  await expect(page.locator('.banner')).toHaveCount(0);
+  await page.locator('.react-flow__node:has(.card-link)').dblclick({ position: { x: 20, y: 40 } });
+  await page.getByTestId('link-input').fill('https://example.net/neu');
+  await page.keyboard.press('Enter');
+  await expect(card).toHaveAttribute('data-url', 'https://example.net/neu');
+  await app.close();
+});
+
+test('right-click menu: duplicate, color, order, delete with undo, paste on the pane', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Menü');
+  // Selected cards are drawn on top; the duplicate overlaps the original, so target the selected one.
+  const note = page.locator('.react-flow__node.selected:has(.text-note)');
+  await page.locator('.react-flow__node:has(.text-note)').click();
+  await note.click({ button: 'right' });
+  await expect(page.getByTestId('context-menu')).toBeVisible();
+  await page.getByTestId('menu-duplicate').click();
+  await expect(page.locator('.text-note')).toHaveCount(2);
+
+  await note.click({ button: 'right' });
+  await page.getByTestId('menu-color-green').click();
+  await expect(page.locator('.text-note[data-color="green"]')).toHaveCount(1);
+
+  await note.click({ button: 'right' });
+  await page.getByTestId('menu-copy').click();
+  const b = await pane(page);
+  await page.mouse.click(b.x + 800, b.y + 450, { button: 'right' });
+  await page.getByTestId('menu-paste').click();
+  await expect(page.locator('.text-note')).toHaveCount(3);
+
+  await note.click({ button: 'right' });
+  await page.getByTestId('menu-delete').click();
+  await expect(page.locator('.text-note')).toHaveCount(2);
+  await expect(page.getByTestId('toast')).toContainText('Karte gelöscht');
+  await page.getByTestId('toast-undo').click();
+  await expect(page.locator('.text-note')).toHaveCount(3);
+
+  await page.keyboard.press('Escape');
+  await page.mouse.click(b.x + 900, b.y + 100, { button: 'right' });
+  await expect(page.getByTestId('context-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('context-menu')).toHaveCount(0);
+  await app.close();
+});
+
+test('double-click opens a sub-board, the Edit menu acts on the board', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.keyboard.press('b');
+  await page.mouse.click(b.x + 300, b.y + 200);
+  await page.keyboard.type('Projekt');
+  await page.keyboard.press('Enter');
+  await page.locator('.react-flow__node:has(.card-board)').dblclick({ position: { x: 30, y: 20 } });
+  await expect(page.locator('.crumb')).toHaveCount(2);
+  await expect(page.getByLabel('Titel dieses Boards')).toHaveValue('Projekt');
+  await page.getByRole('button', { name: 'Hauptboard', exact: true }).click();
+
+  const clickMenu = (label: string) =>
+    app.evaluate(({ Menu, BrowserWindow }, name) => {
+      const edit = Menu.getApplicationMenu()!.items.find((item) => item.label === 'Bearbeiten')!;
+      const entry = edit.submenu!.items.find((item) => item.label === name)!;
+      entry.click(undefined, BrowserWindow.getAllWindows()[0], undefined);
+    }, label);
+  await page.locator('.react-flow__node:has(.card-board)').click();
+  await clickMenu('Duplizieren');
+  await expect(page.locator('.card-board')).toHaveCount(2);
+  await clickMenu('Rückgängig');
+  await expect(page.locator('.card-board')).toHaveCount(1);
+  await clickMenu('Alles auswählen');
+  await expect(page.locator('.react-flow__node.selected')).toHaveCount(1);
+  await app.close();
+});
+
+test('Ctrl+Z inside a note undoes typing only, not board changes', async () => {
+  const { app, page } = await launch();
+  await addNote(page, 200, 150, 'Erste');
+  await page.locator('.text-note').dblclick();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Zeile');
+  await page.keyboard.press('Control+Z');
+  // Chromium undoes the typing in the field; the board itself must stay untouched.
+  await expect(page.getByTestId('card-editor')).not.toHaveValue('Erste Zeile');
+  await expect(page.getByTestId('card-editor')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.text-note')).toHaveCount(1);
+  await expect(page.locator('.text-note .card-copy')).toContainText('Erste');
+  await app.close();
+});

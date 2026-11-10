@@ -1,7 +1,7 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
-import type { BoardCard, ImageCard, StickerCard, TextCard } from '../../../shared/model';
+import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import type { BoardCard, ImageCard, LinkCard, StickerCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
 
@@ -32,6 +32,8 @@ export type CardLookup = {
   toggleTodo: (cardId: string, itemId: string) => void;
   addTodoAfter: (cardId: string, itemId: string) => string | null;
   fitTextHeight: (id: string, height: number) => void;
+  link: (id: string) => LinkCard | undefined;
+  openLink: (url: string) => void;
   deleteTodoItem: (cardId: string, itemId: string) => void;
   startEdit: (id: string) => void;
   armGesture: () => void;
@@ -59,6 +61,8 @@ let lookup: CardLookup = {
   toggleTodo: () => undefined,
   addTodoAfter: () => null,
   fitTextHeight: () => undefined,
+  link: () => undefined,
+  openLink: () => undefined,
   deleteTodoItem: () => undefined,
   startEdit: () => undefined,
   armGesture: () => undefined,
@@ -181,7 +185,14 @@ export function ImageCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
   const file = card ? lookup.fileUrl(card.fileId) : undefined;
   return (
     <article className={`card card-image${selected ? ' is-selected' : ''}`}>
-      {resizer(selected, MIN_IMAGE_SIZE)}
+      <NodeResizer
+        isVisible={Boolean(selected)}
+        keepAspectRatio
+        minWidth={MIN_IMAGE_SIZE.width}
+        minHeight={MIN_IMAGE_SIZE.height}
+        lineStyle={{ borderColor: 'var(--ink)' }}
+        handleStyle={{ width: 10, height: 10, borderRadius: 4, background: 'var(--ink)', border: 'none' }}
+      />
       <Handles visible={data.connect} />
       {file ? <img src={file.url} alt={file.name} draggable={false} /> : <p>Bild fehlt</p>}
     </article>
@@ -209,6 +220,7 @@ export function BoardCardNode({ id, selected, data }: NodeProps<Node<FlowData, '
           autoFocus
           aria-label="Titel des Unterboards"
           value={draft}
+          onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => {
             setDraft(event.target.value);
             lookup.commitTitle(card.boardId, event.target.value);
@@ -258,6 +270,7 @@ export function ColumnCardNode({ id, selected, data }: NodeProps<Node<FlowData, 
             autoFocus
             aria-label="Spaltentitel"
             value={draft}
+            onFocus={(event) => event.currentTarget.select()}
             onChange={(event) => {
               setDraft(event.target.value);
               lookup.commitColumnTitle(id, event.target.value);
@@ -400,6 +413,28 @@ export function StickerCardNode({ id, selected, data }: NodeProps<Node<FlowData,
       {resizer(selected, MIN_STICKER_SIZE)}
       <Handles visible={data.connect} />
       <StickerArt kind={card.kind} />
+    </article>
+  );
+}
+
+export function LinkCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'linkCard'>>) {
+  const card = lookup.link(id);
+  if (!card) return null;
+  let host = card.url;
+  try {
+    host = new URL(card.url).host;
+  } catch {
+    // keep the raw address
+  }
+  return (
+    <article className={`card card-link${selected ? ' is-selected' : ''}`} data-url={card.url} data-column={card.columnId ?? ''}>
+      {resizer(selected, MIN_LINK_SIZE)}
+      <Handles visible={data.connect} />
+      <p className="kicker">Link · {host}</p>
+      <h2 className="link-title" title={card.url}>{card.title || host}</h2>
+      <button type="button" className="nodrag nopan open-board" data-testid="open-link" onClick={() => lookup.openLink(card.url)}>
+        Im Browser öffnen ↗
+      </button>
     </article>
   );
 }

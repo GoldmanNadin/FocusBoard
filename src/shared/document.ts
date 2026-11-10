@@ -14,6 +14,7 @@ import {
   MAX_FILES,
   MAX_TEXT_LENGTH,
   MAX_TITLE_LENGTH,
+  MAX_URL_LENGTH,
   MAX_ZOOM,
   MIN_ZOOM,
   MSG,
@@ -96,7 +97,7 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
   const x = numberIn(value.x, -COORD_LIMIT, COORD_LIMIT);
   const y = numberIn(value.y, -COORD_LIMIT, COORD_LIMIT);
   if (x == null || y == null) return null;
-  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo') {
+  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link') {
     return null;
   }
   const min = minSizeFor(type);
@@ -146,10 +147,32 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
       : [];
     return { id, type: 'todo', x, y, width, height, title, items, columnId: readColumnId(value.columnId) };
   }
+  if (type === 'link') {
+    const url = typeof value.url === 'string' ? normalizeUrl(value.url) : null;
+    if (!url) return null;
+    const title = typeof value.title === 'string' ? value.title.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 200) : '';
+    return { id, type: 'link', x, y, width, height, url, title, columnId: readColumnId(value.columnId) };
+  }
   const boardId = idField(value.boardId);
   if (!boardId) return null;
   const card: BoardCard = { id, type: 'board', x, y, width, height, boardId, columnId: readColumnId(value.columnId) };
   return card;
+}
+
+/** Accepts only http(s) addresses; adds https:// to a bare host such as example.com/page. */
+export function normalizeUrl(input: string): string | null {
+  const raw = input.trim();
+  if (!raw || raw.length > MAX_URL_LENGTH || /\s/.test(raw)) return null;
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : /^[\w-]+(\.[\w-]+)+(:\d+)?(\/|$)/.test(raw) ? `https://${raw}` : null;
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (!url.hostname) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function readColumnId(value: unknown): string | null {

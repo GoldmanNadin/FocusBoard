@@ -251,6 +251,7 @@ export function addImageCard(
   image: { fileName: string; dataUrl: string },
   position: { x: number; y: number },
   ids?: { cardId?: string; fileId?: string },
+  natural?: { width: number; height: number },
 ): DocResult {
   const board = getBoard(doc, boardId);
   if (!board) return fail(MSG.missingBoard);
@@ -258,7 +259,7 @@ export function addImageCard(
   if (doc.files.length >= MAX_FILES) return fail(MSG.tooManyFiles);
   const inspected = inspectImageDataUrl(image.dataUrl, image.fileName);
   if (!inspected.ok) return inspected;
-  const size = defaultSizeFor('image');
+  const size = imageCardSize(natural);
   const geometry = geometryError(position.x, position.y, size.width, size.height, 'image');
   if (geometry) return fail(geometry);
   const used = usedIds(doc);
@@ -291,6 +292,21 @@ export function addImageCard(
       ],
     },
   };
+}
+
+/** Card size that keeps the picture's aspect ratio: 280 px on the long side, never below the minimum. */
+export function imageCardSize(natural?: { width: number; height: number }): { width: number; height: number } {
+  const fallback = defaultSizeFor('image');
+  if (!natural || !(natural.width > 0) || !(natural.height > 0)) return fallback;
+  const ratio = natural.width / natural.height;
+  const long = 280;
+  let width = ratio >= 1 ? long : long * ratio;
+  let height = ratio >= 1 ? long / ratio : long;
+  const min = minSizeFor('image');
+  const grow = Math.max(min.width / width, min.height / height, 1);
+  width = Math.min(MAX_CARD_EDGE, Math.round(width * grow));
+  height = Math.min(MAX_CARD_EDGE, Math.round(height * grow));
+  return { width, height };
 }
 
 export function addSubboard(

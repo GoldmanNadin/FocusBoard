@@ -3,6 +3,7 @@ import {
   addColumn,
   addConnector,
   addImageCard,
+  imageCardSize,
   addSticker,
   addSubboard,
   addTextCard,
@@ -22,6 +23,8 @@ import {
 } from '../../shared/boardOps';
 import { relayoutColumn, renameColumn, setColumnWidth, settleCardDrop, toggleColumn } from '../../shared/columns';
 import { addCanvasLine, anchorPosition, deleteLines, snapAnchor, updateLine } from '../../shared/lines';
+import { addLinkCard, copyCards, pasteClip, reorderCards, updateLink, type Clip } from '../../shared/clipboard';
+import { normalizeUrl } from '../../shared/document';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
 import { serializeDocument, validateDocument } from '../../shared/document';
 import { placementTopLeft, windowTitle } from '../../shared/gestures';
@@ -45,7 +48,9 @@ import { BoardCanvas, type PlacementApi } from './components/BoardCanvas';
 import type { CardLookup } from './components/cards';
 import {
   IconArrow,
+  IconBoard,
   IconColumn,
+  IconLink,
   IconHeading,
   IconImage,
   IconMore,
@@ -57,7 +62,15 @@ import {
   IconUndo,
 } from './components/icons';
 
-type Tool = 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard';
+type Tool = 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link';
+
+type ContextTarget = { kind: 'card'; id: string } | { kind: 'pane' };
+type ContextMenuState = { target: ContextTarget; ids: string[]; screen: { x: number; y: number }; point: { x: number; y: number } };
+type LinkPrompt = { screen: { x: number; y: number }; point: { x: number; y: number }; editId: string | null; value: string; error: string | null };
+type Toast = { id: number; text: string; undo: boolean };
+
+/** Single-key tool shortcuts (no modifier), shown in the tooltips. */
+const TOOL_KEYS: Record<string, Tool> = { v: 'select', n: 'note', t: 'heading', u: 'subheading', k: 'link', s: 'column', a: 'todo', l: 'line', b: 'subboard' };
 
 export function App() {
   if (!window.whiteboard) {
@@ -95,7 +108,12 @@ function Workbench() {
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const [headerDraft, setHeaderDraft] = useState('Hauptboard');
   const [autosavedAt, setAutosavedAt] = useState<Date | null>(null);
-  const [selectAllToken, setSelectAllToken] = useState(0);
+  const [selectRequest, setSelectRequest] = useState<{ token: number; ids: string[] | 'all' }>({ token: 0, ids: [] });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [linkPrompt, setLinkPrompt] = useState<LinkPrompt | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
   const [morePos, setMorePos] = useState<{ left: number; top: number } | null>(null);
   const histRef = useRef(hist);
   histRef.current = hist;
@@ -184,6 +202,7 @@ function Workbench() {
 
   function undo() {
     if (editingRef.current) return;
+    setToast(null);
     const next = undoHistory(histRef.current);
     histRef.current = { ...next, present: keepViewports(next.present, histRef.current.present) };
     setHist(histRef.current);
@@ -252,9 +271,14 @@ function Workbench() {
     setMoreOpen(false);
   }
 
-  function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line', point: { x: number; y: number }) {
+  function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link', point: { x: number; y: number }) {
     if (kind === 'line') {
       placeLine(point);
+      return;
+    }
+    if (kind === 'link') {
+      openLinkPrompt(point, null, '');
+      setTool('select');
       return;
     }
     if (kind === 'column') {
@@ -361,9 +385,10 @@ function Workbench() {
       return;
     }
     if (picked.canceled) return;
+    const natural = await imageSize(picked.dataUrl);
     const center = point ?? placementRef.current?.center() ?? { x: 180, y: 140 };
-    const position = point ?? placementTopLeft(center, { width: 280, height: 210 }, 0);
-    const result = addImageCard(histRef.current.present, boardRef.current, picked, position);
+    const position = point ?? placementTopLeft(center, imageCardSize(natural), 0);
+    const result = addImageCard(histRef.current.present, boardRef.current, picked, position, undefined, natural);
     if (!result.ok) {
       setBanner(result.error);
       return;
@@ -373,6 +398,189 @@ function Workbench() {
     if (created) setFocusId(created.id);
     setTool('select');
     setMoreOpen(false);
+  }
+
+  function showToast(text: string, undoable = false) {
+    setToast({ id: Date.now(), text, undo: undoable });
+  }
+
+  function cardsOnBoard(ids: string[]): string[] {
+    const board = getBoard(histRef.current.present, boardRef.current);
+    const known = new Set(board?.cards.map((card) => card.id) ?? []);
+    return ids.filter((id) => known.has(id));
+  }
+
+  function selectCards(ids: string[] | 'all') {
+    setSelectRequest((request) => ({ token: request.token + 1, ids }));
+    if (ids !== 'all') setSelectedIds(ids);
+  }
+
+  /** Deletes cards with the same confirmation as the Delete key and offers undo. */
+  async function deleteWithConfirm(ids: string[]): Promise<string[]> {
+    const board = getBoard(histRef.current.present, boardRef.current);
+    const present = cardsOnBoard(ids);
+    if (!board || present.length === 0) return [];
+    const titles = board.cards.flatMap((card) => {
+      if (!present.includes(card.id) || card.type !== 'board') return [];
+      return [getBoard(histRef.current.present, card.boardId)?.title ?? 'Unterboard'];
+    });
+    if (titles.length > 0 && !(await api.confirmDeleteBoards(titles))) return [];
+    const result = deleteCards(histRef.current.present, board.id, present);
+    if (!result.ok) {
+      setBanner(result.error);
+      return [];
+    }
+    commit(result.doc);
+    setSelectedIds([]);
+    showToast(present.length === 1 ? 'Karte gelöscht' : `${present.length} Karten gelöscht`, true);
+    return present;
+  }
+
+  /** Plain-text version of the copied cards, for pasting into other programs. */
+  function clipText(clip: Clip): string {
+    return clip.cards
+      .flatMap((card) => {
+        if (card.type === 'text') return [card.text];
+        if (card.type === 'todo') return [card.title, ...card.items.map((item) => `${item.done ? '[x]' : '[ ]'} ${item.text}`)];
+        if (card.type === 'link') return [card.url];
+        if (card.type === 'column') return [card.title];
+        if (card.type === 'board') return [getBoard(histRef.current.present, card.boardId)?.title ?? ''];
+        return [];
+      })
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  function copySelection(data: DataTransfer | null): boolean {
+    const ids = cardsOnBoard(selectedIds);
+    const clip = copyCards(histRef.current.present, boardRef.current, ids);
+    if (!clip) return false;
+    const token = `focusboard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    clipRef.current = { token, clip };
+    if (data) {
+      data.setData('text/plain', clipText(clip) || ' ');
+      data.setData('application/x-focusboard', token);
+    }
+    return true;
+  }
+
+  function pasteClipAt(clip: Clip, at: { x: number; y: number }) {
+    finishEdit();
+    const result = pasteClip(histRef.current.present, boardRef.current, clip, at);
+    if (!result.ok) {
+      setBanner(result.error);
+      return;
+    }
+    commit(result.doc);
+    selectCards(result.cardIds);
+  }
+
+  function pastePoint(): { x: number; y: number } {
+    return pointerRef.current ?? placementRef.current?.center() ?? { x: 180, y: 140 };
+  }
+
+  function duplicateSelection() {
+    const ids = cardsOnBoard(selectedIds);
+    const clip = copyCards(histRef.current.present, boardRef.current, ids);
+    if (!clip) return;
+    const minX = Math.min(...clip.cards.map((card) => card.x));
+    const minY = Math.min(...clip.cards.map((card) => card.y));
+    pasteClipAt(clip, { x: minX + 32, y: minY + 32 });
+  }
+
+  function addTextAt(text: string, point: { x: number; y: number }) {
+    const result = addTextCard(histRef.current.present, boardRef.current, text.slice(0, 8000), point, undefined, { style: 'note', color: noteColor });
+    if (!result.ok) {
+      setBanner(result.error);
+      return;
+    }
+    const created = getBoard(result.doc, boardRef.current)?.cards.at(-1);
+    commit(result.doc);
+    if (created) selectCards([created.id]);
+  }
+
+  function addLinkAt(url: string, point: { x: number; y: number }): string | null {
+    const result = addLinkCard(histRef.current.present, boardRef.current, url, point);
+    if (!result.ok) return result.error;
+    const created = getBoard(result.doc, boardRef.current)?.cards.at(-1);
+    const settled = created ? settleCardDrop(result.doc, boardRef.current, created.id, point) : result;
+    commit(settled.ok ? settled.doc : result.doc);
+    if (created) selectCards([created.id]);
+    return null;
+  }
+
+  /** Adds dropped or pasted image files in a loose grid, keeping each picture's aspect ratio. */
+  async function addImageFiles(files: File[], at: { x: number; y: number }) {
+    const images = files.filter((file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type));
+    if (images.length === 0) {
+      setBanner(files.length > 0 ? 'Nur PNG, JPEG, GIF und WebP können als Bild eingefügt werden.' : 'Nichts zum Einfügen.');
+      return;
+    }
+    const created: string[] = [];
+    let present = histRef.current.present;
+    for (const [index, file] of images.entries()) {
+      const dataUrl = await readAsDataUrl(file);
+      if (!dataUrl) {
+        setBanner('Die Datei konnte nicht gelesen werden.');
+        continue;
+      }
+      const natural = await imageSize(dataUrl);
+      const position = { x: at.x + (index % 4) * 300, y: at.y + Math.floor(index / 4) * 300 };
+      const name = file.name || `Bild.${file.type.split('/')[1] ?? 'png'}`;
+      const result = addImageCard(present, boardRef.current, { fileName: name, dataUrl }, position, undefined, natural);
+      if (!result.ok) {
+        setBanner(result.error);
+        continue;
+      }
+      present = result.doc;
+      const card = getBoard(present, boardRef.current)?.cards.at(-1);
+      if (card) created.push(card.id);
+    }
+    if (created.length === 0) return;
+    commit(present);
+    selectCards(created);
+  }
+
+  function openLinkPrompt(point: { x: number; y: number }, editId: string | null, value: string) {
+    const flow = document.querySelector('.react-flow')?.getBoundingClientRect();
+    const view = getBoard(histRef.current.present, boardRef.current)?.viewport ?? { x: 0, y: 0, zoom: 1 };
+    const screen = {
+      x: Math.min(window.innerWidth - 340, Math.max(8, (flow?.left ?? 0) + point.x * view.zoom + view.x)),
+      y: Math.min(window.innerHeight - 120, Math.max(8, (flow?.top ?? 0) + point.y * view.zoom + view.y)),
+    };
+    setLinkPrompt({ screen, point, editId, value, error: null });
+  }
+
+  function submitLinkPrompt() {
+    if (!linkPrompt) return;
+    if (linkPrompt.editId) {
+      const result = updateLink(histRef.current.present, boardRef.current, linkPrompt.editId, { url: linkPrompt.value });
+      if (!result.ok) {
+        setLinkPrompt({ ...linkPrompt, error: result.error });
+        return;
+      }
+      commit(result.doc);
+    } else {
+      const error = addLinkAt(linkPrompt.value, linkPrompt.point);
+      if (error) {
+        setLinkPrompt({ ...linkPrompt, error });
+        return;
+      }
+    }
+    setLinkPrompt(null);
+  }
+
+  function openCard(id: string): boolean {
+    const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+    if (card?.type === 'board') {
+      lookup.openBoard(card.boardId);
+      return true;
+    }
+    if (card?.type === 'link') {
+      openLinkPrompt({ x: card.x, y: card.y }, card.id, card.url);
+      return true;
+    }
+    return false;
   }
 
   function onDropTool(name: string, point: { x: number; y: number }) {
@@ -385,7 +593,7 @@ function Workbench() {
       addStickerAt(kind, point);
       return;
     }
-    if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line') {
+    if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line' || name === 'link' || name === 'subboard') {
       createAt(name, point);
     }
   }
@@ -563,6 +771,15 @@ function Workbench() {
         const result = deleteTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
         if (result.ok) commit(result.doc);
       },
+      link: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        return card?.type === 'link' ? card : undefined;
+      },
+      openLink: (url) => {
+        void api.openExternal(url).then((ok) => {
+          if (!ok) setBanner('Dieser Link kann nicht geöffnet werden.');
+        });
+      },
       fitTextHeight: (id, height) => {
         const present = histRef.current.present;
         const board = getBoard(present, boardRef.current);
@@ -611,7 +828,29 @@ function Workbench() {
       if (meta && event.key.toLowerCase() === 'a') {
         event.preventDefault();
         setSelectedLine(null);
-        setSelectAllToken((value) => value + 1);
+        selectCards('all');
+        return;
+      }
+      if (meta && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        duplicateSelection();
+        return;
+      }
+      if (!meta && !event.altKey && !event.shiftKey && TOOL_KEYS[event.key.toLowerCase()]) {
+        event.preventDefault();
+        chooseTool(TOOL_KEYS[event.key.toLowerCase()]!);
+        return;
+      }
+      if (!meta && !event.altKey && event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        void addImage();
+        return;
+      }
+      if (event.key === 'F2' && selectedIds.length === 1) {
+        event.preventDefault();
+        const card = current.cards.find((item) => item.id === selectedIds[0]);
+        if (card?.type === 'link') openLinkPrompt({ x: card.x, y: card.y }, card.id, card.url);
+        else if (card) beginEdit(card.id);
         return;
       }
       if (meta && event.key.toLowerCase() === 'z' && !event.shiftKey) {
@@ -634,9 +873,69 @@ function Workbench() {
         if (card && (card.type === 'text' || card.type === 'board')) beginEdit(card.id);
       }
     };
+    const onCopy = (event: ClipboardEvent) => {
+      if (isTypingTarget(document.activeElement) || hasTextSelection()) return;
+      if (copySelection(event.clipboardData)) event.preventDefault();
+    };
+    const onCut = (event: ClipboardEvent) => {
+      if (isTypingTarget(document.activeElement) || hasTextSelection()) return;
+      const ids = cardsOnBoard(selectedIds);
+      if (!copySelection(event.clipboardData)) return;
+      event.preventDefault();
+      void deleteWithConfirm(ids);
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (isTypingTarget(document.activeElement)) return;
+      const data = event.clipboardData;
+      if (!data) return;
+      event.preventDefault();
+      const at = pastePoint();
+      const token = data.getData('application/x-focusboard');
+      if (token && clipRef.current?.token === token) {
+        pasteClipAt(clipRef.current.clip, at);
+        return;
+      }
+      const files = [...data.files];
+      if (files.length > 0) {
+        void addImageFiles(files, at);
+        return;
+      }
+      const text = data.getData('text/plain').trim();
+      if (!text) {
+        // Some programs copy only their own format; fall back to the last internal copy.
+        if (clipRef.current) pasteClipAt(clipRef.current.clip, at);
+        else showToast('In der Zwischenablage ist nichts, das eingefügt werden kann.');
+        return;
+      }
+      const url = !/\s/.test(text) ? normalizeUrl(text) : null;
+      if (url) {
+        const error = addLinkAt(url, at);
+        if (error) setBanner(error);
+        return;
+      }
+      if (clipRef.current && clipText(clipRef.current.clip) === text) {
+        pasteClipAt(clipRef.current.clip, at);
+        return;
+      }
+      addTextAt(text, at);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('cut', onCut);
+    document.addEventListener('paste', onPaste);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('cut', onCut);
+      document.removeEventListener('paste', onPaste);
+    };
   });
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     const offs = [
@@ -645,6 +944,26 @@ function Workbench() {
       api.onMenuSave(() => void save(false)),
       api.onMenuSaveAs(() => void save(true)),
       api.onSaveAndClose(() => void save(false).then((ok) => { if (ok) api.approveClose(); })),
+      api.onMenuCommand((command) => {
+        const typing = isTypingTarget(document.activeElement);
+        if (command === 'undo') {
+          if (!typing) undo();
+        } else if (command === 'redo') {
+          if (!typing) redo();
+        } else if (command === 'selectAll') {
+          if (typing) document.execCommand('selectAll');
+          else selectCards('all');
+        } else if (command === 'duplicate') {
+          if (!typing) duplicateSelection();
+        } else if (command === 'delete') {
+          if (typing) document.execCommand('delete');
+          else if (selectedLine) {
+            const result = deleteLines(histRef.current.present, current.id, [selectedLine]);
+            if (result.ok) commit(result.doc);
+            setSelectedLine(null);
+          } else void deleteWithConfirm(selectedIds);
+        }
+      }),
     ];
     return () => offs.forEach((off) => off());
   });
@@ -754,33 +1073,40 @@ function Workbench() {
       ) : null}
       <div className="workspace">
         <aside className="toolbar" aria-label="Werkzeuge">
-          <ToolButton id="tool-select" label="Auswahl" pressed={tool === 'select'} onClick={() => chooseTool('select')}>
+          <ToolButton id="tool-select" label="Auswahl" short="Auswahl" shortcut="V" pressed={tool === 'select'} onClick={() => chooseTool('select')}>
             <IconSelect />
           </ToolButton>
-          <ToolButton id="tool-note" label="Notiz" pressed={tool === 'note'} onClick={() => chooseTool('note')}>
+          <ToolButton id="tool-note" label="Notiz" short="Notiz" shortcut="N" pressed={tool === 'note'} onClick={() => chooseTool('note')}>
             <IconNote />
           </ToolButton>
-          <ToolButton id="tool-heading" label="Große Überschrift" pressed={tool === 'heading'} onClick={() => chooseTool('heading')}>
+          <ToolButton id="tool-heading" label="Große Überschrift" short="Titel" shortcut="T" pressed={tool === 'heading'} onClick={() => chooseTool('heading')}>
             <IconHeading />
           </ToolButton>
-          <ToolButton id="tool-subheading" label="Kleine Überschrift" pressed={tool === 'subheading'} onClick={() => chooseTool('subheading')}>
+          <ToolButton id="tool-subheading" label="Kleine Überschrift" short="Untertitel" shortcut="U" pressed={tool === 'subheading'} onClick={() => chooseTool('subheading')}>
             <IconSubheading />
           </ToolButton>
-          <ToolButton id="tool-image" label="Bild" pressed={tool === 'image'} onClick={() => void addImage()}>
+          <ToolButton id="tool-image" label="Bild" short="Bild" shortcut="I" pressed={tool === 'image'} onClick={() => void addImage()}>
             <IconImage />
           </ToolButton>
-          <ToolButton id="tool-column" label="Spalte" pressed={tool === 'column'} onClick={() => chooseTool('column')}>
+          <ToolButton id="tool-link" label="Link" short="Link" shortcut="K" pressed={tool === 'link'} onClick={() => chooseTool('link')}>
+            <IconLink />
+          </ToolButton>
+          <ToolButton id="tool-board" label="Unterboard" short="Board" shortcut="B" pressed={tool === 'subboard'} onClick={() => chooseTool('subboard')}>
+            <IconBoard />
+          </ToolButton>
+          <ToolButton id="tool-column" label="Spalte" short="Spalte" shortcut="S" pressed={tool === 'column'} onClick={() => chooseTool('column')}>
             <IconColumn />
           </ToolButton>
-          <ToolButton id="tool-todo" label="Aufgaben" pressed={tool === 'todo'} onClick={() => chooseTool('todo')}>
+          <ToolButton id="tool-todo" label="Aufgaben" short="Liste" shortcut="A" pressed={tool === 'todo'} onClick={() => chooseTool('todo')}>
             <IconTodo />
           </ToolButton>
-          <ToolButton id="tool-line" label="Linie" pressed={tool === 'line'} onClick={() => chooseTool('line')}>
+          <ToolButton id="tool-line" label="Linie" short="Linie" shortcut="L" pressed={tool === 'line'} onClick={() => chooseTool('line')}>
             <IconArrow />
           </ToolButton>
           <ToolButton
             id="tool-more"
-            label="Mehr"
+            label="Sticker und mehr"
+            short="Mehr"
             pressed={moreOpen || tool === 'subboard'}
             onClick={(event) => {
               // The menu is fixed to the window so the scrolling toolbar cannot clip it.
@@ -810,7 +1136,7 @@ function Workbench() {
             key={current.id}
             board={current}
             syncToken={syncToken}
-            selectAllToken={selectAllToken}
+            selectRequest={selectRequest}
             editingId={editingId}
             focusId={focusId}
             connect={false}
@@ -860,20 +1186,20 @@ function Workbench() {
                 setSyncToken((value) => value + 1);
               });
             }}
-            onDelete={async (ids) => {
-              const board = getBoard(histRef.current.present, current.id);
-              const titles = board?.cards.flatMap((card) => {
-                if (!ids.includes(card.id) || card.type !== 'board') return [];
-                return [getBoard(histRef.current.present, card.boardId)?.title ?? 'Unterboard'];
-              }) ?? [];
-              if (titles.length > 0 && !(await api.confirmDeleteBoards(titles))) return [];
-              const result = deleteCards(histRef.current.present, current.id, ids);
-              if (!result.ok) {
-                setBanner(result.error);
-                return [];
+            onDelete={(ids) => deleteWithConfirm(ids)}
+            onDropFiles={(files, point) => void addImageFiles(files, point)}
+            onPointer={(point) => {
+              pointerRef.current = point;
+            }}
+            onOpenCard={openCard}
+            onContextMenu={(target, screen, point) => {
+              let ids: string[] = [];
+              if (target.kind === 'card') {
+                ids = selectedIds.includes(target.id) ? cardsOnBoard(selectedIds) : [target.id];
+                if (!selectedIds.includes(target.id)) selectCards([target.id]);
               }
-              commit(result.doc);
-              return ids.filter((id) => board?.cards.some((card) => card.id === id));
+              setSelectedLine(null);
+              setContextMenu({ target, ids, screen, point });
             }}
             onConnect={(connection) => {
               if (!connection.source || !connection.target) return;
@@ -968,20 +1294,242 @@ function Workbench() {
               ))}
             </div>
           ) : null}
+          {current.cards.length === 0 && !linkPrompt ? (
+            <div className="empty-hint" data-testid="empty-hint">
+              <p className="empty-title">Dieses Board ist noch leer</p>
+              <p>Doppelklick auf die Fläche legt eine Notiz an.</p>
+              <p>Werkzeuge links anklicken oder auf die Fläche ziehen.</p>
+              <p>Bilder aus dem Explorer hineinziehen oder mit Strg+V einfügen.</p>
+            </div>
+          ) : null}
+          {toast ? (
+            <div className="toast" role="status" data-testid="toast" key={toast.id}>
+              <span>{toast.text}</span>
+              {toast.undo ? (
+                <button type="button" data-testid="toast-undo" onClick={() => { undo(); setToast(null); }}>
+                  Rückgängig
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </main>
       </div>
+      {linkPrompt ? (
+        <form
+          className="link-prompt"
+          data-testid="link-prompt"
+          style={{ left: linkPrompt.screen.x, top: linkPrompt.screen.y }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitLinkPrompt();
+          }}
+        >
+          <label htmlFor="link-input">{linkPrompt.editId ? 'Link ändern' : 'Web-Adresse für den Link'}</label>
+          <input
+            id="link-input"
+            data-testid="link-input"
+            autoFocus
+            placeholder="https://…"
+            value={linkPrompt.value}
+            onChange={(event) => setLinkPrompt({ ...linkPrompt, value: event.target.value, error: null })}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setLinkPrompt(null);
+              }
+            }}
+          />
+          {linkPrompt.error ? <p className="link-error" role="alert">{linkPrompt.error}</p> : null}
+          <div className="link-actions">
+            <button type="button" onClick={() => setLinkPrompt(null)}>Abbrechen</button>
+            <button type="submit" data-testid="link-submit">{linkPrompt.editId ? 'Übernehmen' : 'Einfügen'}</button>
+          </div>
+        </form>
+      ) : null}
+      {contextMenu ? (
+        <ContextMenu
+          state={contextMenu}
+          board={current}
+          hasClip={Boolean(clipRef.current)}
+          onClose={() => setContextMenu(null)}
+          onAction={(action, color) => {
+            const ids = contextMenu.ids;
+            setContextMenu(null);
+            const card = ids.length === 1 ? current.cards.find((item) => item.id === ids[0]) : undefined;
+            if (action === 'edit' && card) {
+              if (card.type === 'link') openLinkPrompt({ x: card.x, y: card.y }, card.id, card.url);
+              else beginEdit(card.id);
+            } else if (action === 'open' && card) {
+              if (card.type === 'link') lookup.openLink(card.url);
+              else openCard(card.id);
+            } else if (action === 'color' && color) {
+              setNoteColor(color);
+              const result = setNoteColors(histRef.current.present, current.id, ids, color);
+              if (result.ok) commit(result.doc);
+            } else if (action === 'duplicate') {
+              duplicateSelection();
+            } else if (action === 'copy') {
+              copySelection(null);
+              showToast(ids.length === 1 ? 'Karte kopiert' : `${ids.length} Karten kopiert`);
+            } else if (action === 'cut') {
+              copySelection(null);
+              void deleteWithConfirm(ids);
+            } else if (action === 'front' || action === 'back') {
+              const result = reorderCards(histRef.current.present, current.id, ids, action);
+              if (result.ok) commit(result.doc);
+            } else if (action === 'delete') {
+              void deleteWithConfirm(ids);
+            } else if (action === 'paste' && clipRef.current) {
+              pasteClipAt(clipRef.current.clip, contextMenu.point);
+            } else if (action === 'note') {
+              createAt('note', contextMenu.point);
+            } else if (action === 'link') {
+              openLinkPrompt(contextMenu.point, null, '');
+            } else if (action === 'selectAll') {
+              selectCards('all');
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ToolButton({ id, label, pressed, onClick, children }: { id: string; label: string; pressed: boolean; onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void; children: ReactNode }) {
+type MenuAction = 'edit' | 'open' | 'color' | 'duplicate' | 'copy' | 'cut' | 'front' | 'back' | 'delete' | 'paste' | 'note' | 'link' | 'selectAll';
+
+function ContextMenu({
+  state,
+  board,
+  hasClip,
+  onClose,
+  onAction,
+}: {
+  state: ContextMenuState;
+  board: { cards: { id: string; type: string; style?: string }[] };
+  hasClip: boolean;
+  onClose: () => void;
+  onAction: (action: MenuAction, color?: NoteColor) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.target instanceof Node && ref.current?.contains(event.target)) return;
+      onClose();
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close, true);
+    window.addEventListener('wheel', close, true);
+    window.addEventListener('blur', onClose);
+    ref.current?.querySelector('button')?.focus();
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close, true);
+      window.removeEventListener('wheel', close, true);
+      window.removeEventListener('blur', onClose);
+    };
+  }, [onClose]);
+  const cards = board.cards.filter((card) => state.ids.includes(card.id));
+  const single = cards.length === 1 ? cards[0] : undefined;
+  const notes = cards.some((card) => card.type === 'text' && card.style === 'note');
+  const left = Math.min(state.screen.x, window.innerWidth - 230);
+  const top = Math.min(state.screen.y, window.innerHeight - (state.target.kind === 'card' ? 380 : 190));
+  const item = (action: MenuAction, label: string, hint?: string) => (
+    <button type="button" role="menuitem" data-testid={`menu-${action}`} onClick={() => onAction(action)}>
+      <span>{label}</span>
+      {hint ? <kbd>{hint}</kbd> : null}
+    </button>
+  );
+  return (
+    <div className="context-menu" role="menu" data-testid="context-menu" ref={ref} style={{ left: Math.max(4, left), top: Math.max(4, top) }}>
+      {state.target.kind === 'card' ? (
+        <>
+          {single && (single.type === 'text' || single.type === 'board' || single.type === 'link') ? item('edit', single.type === 'board' ? 'Umbenennen' : 'Bearbeiten', 'F2') : null}
+          {single?.type === 'board' ? item('open', 'Öffnen') : null}
+          {single?.type === 'link' ? item('open', 'Im Browser öffnen') : null}
+          {notes ? (
+            <div className="menu-colors" role="group" aria-label="Notizfarbe">
+              {NOTE_COLOR_ORDER.map((color) => (
+                <button key={color} type="button" className="swatch" aria-label={COLOR_NAMES[color]} data-testid={`menu-color-${color}`} style={{ background: colorFill(color) }} onClick={() => onAction('color', color)} />
+              ))}
+            </div>
+          ) : null}
+          {item('duplicate', 'Duplizieren', 'Strg+D')}
+          {item('copy', 'Kopieren', 'Strg+C')}
+          {item('cut', 'Ausschneiden', 'Strg+X')}
+          <hr />
+          {item('front', 'Nach vorne')}
+          {item('back', 'Nach hinten')}
+          <hr />
+          {item('delete', 'Löschen', 'Entf')}
+        </>
+      ) : (
+        <>
+          {hasClip ? item('paste', 'Hier einfügen', 'Strg+V') : null}
+          {item('note', 'Notiz hier anlegen')}
+          {item('link', 'Link hier anlegen')}
+          {item('selectAll', 'Alles auswählen', 'Strg+A')}
+        </>
+      )}
+    </div>
+  );
+}
+
+const COLOR_NAMES: Record<NoteColor, string> = { yellow: 'Gelb', pink: 'Rosa', turquoise: 'Türkis', green: 'Grün', orange: 'Orange' };
+
+function readAsDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+function imageSize(dataUrl: string): Promise<{ width: number; height: number } | undefined> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => resolve(undefined);
+    image.src = dataUrl;
+  });
+}
+
+function hasTextSelection(): boolean {
+  const selection = window.getSelection();
+  return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
+}
+
+function ToolButton({
+  id,
+  label,
+  short,
+  shortcut,
+  pressed,
+  onClick,
+  children,
+}: {
+  id: string;
+  label: string;
+  short: string;
+  shortcut?: string;
+  pressed: boolean;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
       data-testid={id}
       aria-label={label}
+      aria-keyshortcuts={shortcut}
       aria-pressed={pressed}
-      title={label}
+      title={shortcut ? `${label} (${shortcut})` : label}
       className={pressed ? 'is-on' : ''}
       draggable
       onDragStart={(event) => {
@@ -997,6 +1545,7 @@ function ToolButton({ id, label, pressed, onClick, children }: { id: string; lab
       onClick={onClick}
     >
       {children}
+      <span className="tool-label" aria-hidden="true">{short}</span>
     </button>
   );
 }

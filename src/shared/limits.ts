@@ -24,6 +24,8 @@ export const MIN_BOARD_SIZE = { width: 180, height: 96 };
 export const MIN_STICKER_SIZE = { width: 64, height: 64 };
 export const MIN_COLUMN_SIZE = { width: 180, height: 56 };
 export const MIN_TODO_SIZE = { width: 180, height: 96 };
+export const MIN_LINK_SIZE = { width: 180, height: 112 };
+export const MAX_URL_LENGTH = 2000;
 
 export const DEFAULT_TEXT_SIZE = { width: 220, height: 160 };
 export const DEFAULT_HEADING_SIZE = { width: 340, height: 76 };
@@ -33,6 +35,7 @@ export const DEFAULT_BOARD_SIZE = { width: 230, height: 120 };
 export const DEFAULT_STICKER_SIZE = { width: 104, height: 104 };
 export const DEFAULT_COLUMN_SIZE = { width: 260, height: 88 };
 export const DEFAULT_TODO_SIZE = { width: 240, height: 176 };
+export const DEFAULT_LINK_SIZE = { width: 260, height: 124 };
 export const COLUMN_HEADER = 48;
 export const COLUMN_PAD = 8;
 export const COLUMN_GAP = 8;
@@ -81,9 +84,11 @@ export const MSG = {
   unknownCard: 'Die Datei enthält einen unbekannten Kartentyp.',
   nestedColumn: 'Eine Spalte kann nicht in einer anderen Spalte liegen.',
   badLine: 'Eine Linie ist unvollständig oder zeigt auf eine fehlende Karte.',
+  badUrl: 'Das ist keine gültige Web-Adresse (http oder https).',
+  nothingToPaste: 'In der Zwischenablage ist nichts, das eingefügt werden kann.',
 } as const;
 
-export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo';
+export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link';
 
 export function minSizeFor(type: CardTypeName): { width: number; height: number } {
   if (type === 'text') return MIN_TEXT_SIZE;
@@ -91,6 +96,7 @@ export function minSizeFor(type: CardTypeName): { width: number; height: number 
   if (type === 'sticker') return MIN_STICKER_SIZE;
   if (type === 'column') return MIN_COLUMN_SIZE;
   if (type === 'todo') return MIN_TODO_SIZE;
+  if (type === 'link') return MIN_LINK_SIZE;
   return MIN_BOARD_SIZE;
 }
 
@@ -100,5 +106,6 @@ export function defaultSizeFor(type: CardTypeName): { width: number; height: num
   if (type === 'sticker') return DEFAULT_STICKER_SIZE;
   if (type === 'column') return DEFAULT_COLUMN_SIZE;
   if (type === 'todo') return DEFAULT_TODO_SIZE;
+  if (type === 'link') return DEFAULT_LINK_SIZE;
   return DEFAULT_BOARD_SIZE;
 }

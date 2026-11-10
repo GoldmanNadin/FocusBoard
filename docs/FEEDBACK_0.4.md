@@ -29,7 +29,28 @@ Alle 13 bestätigten Fehler aus Abschnitt A sind behoben, außerdem B1, B2, B4, 
 | B6 | Spalte und Liste prüfen die Kartenzahl und die Geometrie, Linien prüfen die Höchstzahl. |
 | B7 | Der Linien-Entwurf wird bei jedem Wechsel von Werkzeug oder Board verworfen. Ein verschluckter Klick nach dem Zeichnen einer Linie bleibt nicht mehr hängen. |
 
-Noch offen sind B3, B5 und B8 bis B16 sowie alles aus den Abschnitten C und D. Das sind Feinschliff und neue Funktionen, keine Fehler, die heute Daten kosten.
+### Neu eingebaut (zweiter Schritt)
+
+Getestet mit `tests/e2e/tools.spec.ts` (8 Oberflächentests) und `tests/clipboard.test.ts` (7 Unit-Tests). Stand: 45 Unit-Tests und 28 Oberflächentests grün, zweimal hintereinander ohne Wackler.
+
+| Bereich | Was jetzt geht |
+|---|---|
+| D1 Zwischenablage | Strg+C/X/V und Strg+D für Karten. Linien zwischen kopierten Karten, Spalten mit Inhalt und Unterboards mit allem Inhalt werden mitkopiert, auch in ein anderes Dokument. Eingefügt wird an der Mausposition, das Eingefügte ist danach ausgewählt. Beim Kopieren landet zusätzlich reiner Text in der Zwischenablage (für andere Programme). |
+| D1 Einfügen von außen | Strg+V mit Bildschirmfoto → Bildkarte. Mit Text → Notiz. Mit Web-Adresse → Link-Karte. |
+| D1 Bilder hineinziehen | Ein oder mehrere Bilder aus dem Explorer auf die Fläche ziehen. Sie werden als Raster angeordnet. |
+| D1 Rechtsklick-Menü | Auf Karten: Bearbeiten/Umbenennen, Öffnen, Notizfarbe, Duplizieren, Kopieren, Ausschneiden, Nach vorne, Nach hinten, Löschen. Auf der Fläche: Hier einfügen, Notiz hier, Link hier, Alles auswählen. Schließt mit Escape, Klick daneben oder Mausrad. |
+| D1 Ebenen | „Nach vorne“ und „Nach hinten“. |
+| D2 Link-Karte | Neues Werkzeug „Link“ (Taste K). Nimmt nur http(s)-Adressen an, `example.com` wird zu `https://example.com/`. Die Karte zeigt Host und Titel, der Knopf öffnet die Seite im Standardbrowser. Der Hauptprozess prüft die Adresse noch einmal. Doppelklick oder F2 ändert die Adresse. Das Dateiformat prüft Links beim Laden (`javascript:` und `file:` werden abgelehnt). |
+| B5 Menü „Bearbeiten“ | Rückgängig, Wiederholen, Duplizieren, Alles auswählen und Löschen wirken auf das Board. In Textfeldern bleibt das normale Textverhalten. |
+| C1 Werkzeugleiste | Jedes Werkzeug hat eine Beschriftung (Notiz, Titel, Untertitel, Bild, Link, Board, Spalte, Liste, Linie, Mehr) und ein Tastenkürzel (V, N, T, U, I, K, B, S, A, L), das im Tooltip steht. Unterboard ist ein eigenes Werkzeug. Neues Notiz-Symbol. |
+| C7 Bilder | Seitenverhältnis bleibt beim Einfügen und beim Größenändern erhalten. |
+| C8 Unterboards | Doppelklick öffnet das Unterboard. Umbenennen über F2, Enter oder Rechtsklick. Beim Anlegen ist „Neues Board“ markiert, Tippen ersetzt den Titel (vorher wurde angehängt: „Neues BoardProjekt“). Dasselbe gilt für Spaltentitel. |
+| C11 Rückmeldung | Leere Boards erklären, was man tun kann. Nach dem Löschen erscheint „Karte gelöscht · Rückgängig“ für 6 Sekunden. |
+| Neu gefunden und behoben | **Doppelklick auf die leere Fläche** legte nie eine Notiz an, auch in der Originalversion 0.4.0 nicht: React Flow verschluckt den zweiten Klick, wenn eine Rechteckauswahl beginnt. **Die Auswahl sprang zurück** auf die zuletzt angelegte Karte, sobald sich irgendetwas neu ausrichtete, und manchmal waren dadurch zwei Karten ausgewählt. **Escape schloss das Rechtsklick-Menü nicht.** |
+
+Strg+Z in einer Notiz macht wie bisher nur Zeichen für Zeichen rückgängig (Verhalten von Chromium, war schon in 0.4.0 so). Das Board selbst bleibt davon unberührt. Das ist getestet.
+
+Noch offen: B3, B8–B16, aus C die Punkte Textformatierung, Linien-Griffe und Kurven, Hilfslinien, Minikarte, Animationen, Notizfarben-Palette und dunkles Thema, und aus D Datei-Anhang, Suche, Startseite, automatisches Speichern in die Datei, Vorlagen, Export, Zeichnen, Formen, Farbfeld, Kommentar und Tabelle.
 
 ## 0. Kurzfazit
 

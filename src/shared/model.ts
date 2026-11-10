@@ -22,6 +22,12 @@ export type TextCard = Placed & {
   color: NoteColor | null;
 };
 
+export type LinkCard = Placed & {
+  type: 'link';
+  url: string;
+  title: string;
+};
+
 export type ImageCard = Placed & {
   type: 'image';
   fileId: string;
@@ -61,7 +67,7 @@ export type ColumnCard = {
   childIds: string[];
 };
 
-export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard;
+export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard;
 
 export type LineColor = NoteColor | 'ink';
 

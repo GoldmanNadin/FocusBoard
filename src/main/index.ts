@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prepareDocumentForDisk } from '../shared/document';
+import { normalizeUrl, prepareDocumentForDisk } from '../shared/document';
 import { isSafeRecoveryPath, RECOVERY_FILE_NAME } from '../shared/recovery';
 import { deleteBoardsMessage } from '../shared/gestures';
 import { inspectImageBytes } from '../shared/images';
@@ -202,15 +202,19 @@ function buildMenu(win: BrowserWindow): Menu {
     {
       label: 'Bearbeiten',
       submenu: [
-        { role: 'undo', label: 'Rückgängig' },
-        { role: 'redo', label: 'Wiederholen' },
+        // Undo, select all, duplicate and delete go to the board unless a text field has focus
+        // (the renderer decides). Cut, copy and paste stay native roles: they fire DOM clipboard
+        // events, which the board handles too.
+        { label: 'Rückgängig', accelerator: 'CmdOrCtrl+Z', click: () => win.webContents.send(Ipc.menuCommand, 'undo') },
+        { label: 'Wiederholen', accelerator: 'CmdOrCtrl+Y', click: () => win.webContents.send(Ipc.menuCommand, 'redo') },
         { type: 'separator' },
         { role: 'cut', label: 'Ausschneiden' },
         { role: 'copy', label: 'Kopieren' },
         { role: 'paste', label: 'Einfügen' },
-        { role: 'selectAll', label: 'Alles auswählen' },
+        { label: 'Duplizieren', accelerator: 'CmdOrCtrl+D', click: () => win.webContents.send(Ipc.menuCommand, 'duplicate') },
+        { label: 'Alles auswählen', accelerator: 'CmdOrCtrl+A', click: () => win.webContents.send(Ipc.menuCommand, 'selectAll') },
         { type: 'separator' },
-        { role: 'delete', label: 'Löschen' },
+        { label: 'Löschen', click: () => win.webContents.send(Ipc.menuCommand, 'delete') },
       ],
     },
     {
@@ -425,6 +429,15 @@ function registerIpc(): void {
     await fs.rm(target, { force: true });
     await fs.rm(`${target}.tmp`, { force: true });
     return { ok: true };
+  });
+
+  ipcMain.handle(Ipc.openExternal, async (_event, payload: unknown) => {
+    if (typeof payload !== 'string') return false;
+    const url = normalizeUrl(payload);
+    if (!url) return false;
+    if (process.env.WHITEBOARD_E2E === '1') return true;
+    await shell.openExternal(url);
+    return true;
   });
 
   ipcMain.handle(Ipc.e2eFixture, async () => {

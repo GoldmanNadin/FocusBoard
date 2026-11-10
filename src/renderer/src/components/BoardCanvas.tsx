@@ -20,7 +20,7 @@ import type { Board } from '../../../shared/model';
 import { toEdges, toNodes } from '../flow';
 import { columnAtPoint, insertionIndex } from '../../../shared/columns';
 import { COLUMN_GAP, COLUMN_HEADER, COLUMN_PAD } from '../../../shared/limits';
-import { BoardCardNode, ColumnCardNode, ImageCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
+import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
 
 const nodeTypes = {
   textCard: TextCardNode,
@@ -29,6 +29,7 @@ const nodeTypes = {
   stickerCard: StickerCardNode,
   columnCard: ColumnCardNode,
   todoCard: TodoCardNode,
+  linkCard: LinkCardNode,
 };
 
 export type PlacementApi = {
@@ -38,14 +39,14 @@ export type PlacementApi = {
 export function BoardCanvas(props: {
   board: Board;
   syncToken: number;
-  selectAllToken?: number;
+  selectRequest?: { token: number; ids: string[] | 'all' };
   editingId: string | null;
   focusId: string | null;
   connect: boolean;
-  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'connect';
+  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'connect';
   lookup: CardLookup;
   placementRef: MutableRefObject<PlacementApi | null>;
-  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line', point: { x: number; y: number }) => void;
+  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link', point: { x: number; y: number }) => void;
   onPositions: (updates: { id: string; x: number; y: number }[]) => void;
   onSizes: (updates: { id: string; width: number; height: number }[]) => void;
   onDragStart: () => void;
@@ -62,6 +63,10 @@ export function BoardCanvas(props: {
   onSelectLine: (id: string | null) => void;
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
+  onDropFiles?: (files: File[], point: { x: number; y: number }) => void;
+  onContextMenu?: (target: { kind: 'card'; id: string } | { kind: 'pane' }, screen: { x: number; y: number }, point: { x: number; y: number }) => void;
+  onOpenCard?: (id: string) => boolean;
+  onPointer?: (point: { x: number; y: number }) => void;
 }) {
   const boardRef = useRef(props.board);
   boardRef.current = props.board;
@@ -70,18 +75,30 @@ export function BoardCanvas(props: {
   const [nodes, setNodes] = useState(() => toNodes(props.board, props.editingId, props.focusId, props.connect));
   const [edges, setEdges] = useState(() => toEdges(props.board));
 
+  const appliedFocus = useRef(props.focusId);
   useEffect(() => {
-    setNodes(toNodes(boardRef.current, props.editingId, focusRef.current, props.connect));
+    const focus = focusRef.current;
+    const focusChanged = focus !== appliedFocus.current;
+    appliedFocus.current = focus;
+    setNodes((current) => {
+      const next = toNodes(boardRef.current, props.editingId, focus, props.connect);
+      // A newly focused card becomes the selection; otherwise a re-sync keeps whatever the user selected.
+      if (focusChanged && focus) return next;
+      const selected = new Set(current.filter((node) => node.selected).map((node) => node.id));
+      return next.map((node) => ({ ...node, selected: selected.has(node.id) }));
+    });
     setEdges(toEdges(boardRef.current));
   }, [props.syncToken, props.editingId, props.connect]);
 
   const onSelectionRef = useRef(props.onSelection);
   onSelectionRef.current = props.onSelection;
   useEffect(() => {
-    if (!props.selectAllToken) return;
-    setNodes((current) => current.map((node) => ({ ...node, selected: !node.hidden })));
-    onSelectionRef.current(boardRef.current.cards.map((card) => card.id));
-  }, [props.selectAllToken]);
+    const request = props.selectRequest;
+    if (!request || request.token === 0) return;
+    const wanted = request.ids === 'all' ? null : new Set(request.ids);
+    setNodes((current) => current.map((node) => ({ ...node, selected: !node.hidden && (!wanted || wanted.has(node.id)) })));
+    onSelectionRef.current(wanted ? [...wanted] : boardRef.current.cards.map((card) => card.id));
+  }, [props.selectRequest?.token]);
 
   setCardLookup(props.lookup);
 
@@ -108,9 +125,9 @@ function FlowSurface(props: {
   setEdges: (value: ReturnType<typeof toEdges> | ((current: ReturnType<typeof toEdges>) => ReturnType<typeof toEdges>)) => void;
   editingId: string | null;
   connect: boolean;
-  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'connect';
+  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'connect';
   placementRef: MutableRefObject<PlacementApi | null>;
-  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line', point: { x: number; y: number }) => void;
+  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link', point: { x: number; y: number }) => void;
   onPositions: (updates: { id: string; x: number; y: number }[]) => void;
   onSizes: (updates: { id: string; width: number; height: number }[]) => void;
   onDragStart: () => void;
@@ -127,6 +144,10 @@ function FlowSurface(props: {
   onSelectLine: (id: string | null) => void;
   onDrawLine: (start: { x: number; y: number }, end: { x: number; y: number }) => void;
   onLayoutSync: () => void;
+  onDropFiles?: (files: File[], point: { x: number; y: number }) => void;
+  onContextMenu?: (target: { kind: 'card'; id: string } | { kind: 'pane' }, screen: { x: number; y: number }, point: { x: number; y: number }) => void;
+  onOpenCard?: (id: string) => boolean;
+  onPointer?: (point: { x: number; y: number }) => void;
 }) {
   const rf = useReactFlow();
   const shellRef = useRef<HTMLDivElement>(null);
@@ -222,12 +243,11 @@ function FlowSurface(props: {
 
   function createFromPane(event: { clientX: number; clientY: number; detail?: number }) {
     const point = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    if (props.tool === 'select') {
-      if (event.detail === 2) props.onCreate('note', point);
-      return;
-    }
+    // Double-click on the empty pane is handled by onDoubleClick on the shell: React Flow swallows
+    // the second click while it prepares a drag selection.
+    if (props.tool === 'select') return;
     if ((event.detail ?? 1) > 1) return;
-    if (props.tool === 'note' || props.tool === 'heading' || props.tool === 'subheading' || props.tool === 'subboard' || props.tool === 'column' || props.tool === 'todo' || props.tool === 'line') {
+    if (props.tool === 'note' || props.tool === 'heading' || props.tool === 'subheading' || props.tool === 'subboard' || props.tool === 'column' || props.tool === 'todo' || props.tool === 'line' || props.tool === 'link') {
       props.onCreate(props.tool, point);
     }
   }
@@ -254,17 +274,31 @@ function FlowSurface(props: {
         }, 0);
         props.onDrawLine(start, end);
       }}
+      onDoubleClick={(event) => {
+        if (props.tool !== 'select' || !(event.target instanceof Element) || !event.target.classList.contains('react-flow__pane')) return;
+        props.onCreate('note', rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+      }}
+      onMouseMove={(event) => props.onPointer?.(rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }))}
       onDragOver={(event) => {
-        if ([...event.dataTransfer.types].includes('application/x-whiteboard-tool')) {
+        const types = [...event.dataTransfer.types];
+        if (types.includes('application/x-whiteboard-tool') || types.includes('Files')) {
           event.preventDefault();
           event.dataTransfer.dropEffect = 'copy';
         }
       }}
       onDrop={(event) => {
+        const point = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
         const toolName = event.dataTransfer.getData('application/x-whiteboard-tool');
-        if (!toolName) return;
-        event.preventDefault();
-        props.onDropTool(toolName, rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        if (toolName) {
+          event.preventDefault();
+          props.onDropTool(toolName, point);
+          return;
+        }
+        const files = [...event.dataTransfer.files];
+        if (files.length > 0 && props.onDropFiles) {
+          event.preventDefault();
+          props.onDropFiles(files, point);
+        }
       }}
     >
       <ReactFlow
@@ -293,7 +327,9 @@ function FlowSurface(props: {
         onNodeClick={() => props.onSelectLine(null)}
         onSelectionStart={() => props.onSelectLine(null)}
         onNodeDoubleClick={(_event, node) => {
-          if (props.tool === 'select') props.onEdit(node.id);
+          if (props.tool !== 'select') return;
+          if (props.onOpenCard?.(node.id)) return;
+          props.onEdit(node.id);
         }}
         onNodeDragStart={(_event, node) => {
           if (!editingRef.current) props.onDragStart();
@@ -348,7 +384,19 @@ function FlowSurface(props: {
           props.onDragStop(node.id, pointer);
         }}
         onSelectionChange={({ nodes: selectedNodes }) => props.onSelection(selectedNodes.map((node) => node.id))}
-        onPaneContextMenu={(event) => event.preventDefault()}
+        onPaneContextMenu={(event) => {
+          event.preventDefault();
+          props.onContextMenu?.({ kind: 'pane' }, { x: event.clientX, y: event.clientY }, rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }}
+        onNodeContextMenu={(event, node) => {
+          event.preventDefault();
+          props.onContextMenu?.({ kind: 'card', id: node.id }, { x: event.clientX, y: event.clientY }, rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }}
+        onSelectionContextMenu={(event, nodes) => {
+          event.preventDefault();
+          const first = nodes[0];
+          if (first) props.onContextMenu?.({ kind: 'card', id: first.id }, { x: event.clientX, y: event.clientY }, rf.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }}
         onMoveEnd={(_event, viewport: FlowViewport) => onViewportRef.current(viewport)}
         defaultViewport={props.board.viewport}
         minZoom={MIN_ZOOM}
