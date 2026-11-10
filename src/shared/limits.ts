@@ -25,6 +25,9 @@ export const MIN_STICKER_SIZE = { width: 64, height: 64 };
 export const MIN_COLUMN_SIZE = { width: 180, height: 56 };
 export const MIN_TODO_SIZE = { width: 180, height: 96 };
 export const MIN_LINK_SIZE = { width: 180, height: 112 };
+export const MIN_SKETCH_SIZE = { width: 120, height: 90 };
+export const MAX_SKETCH_STROKES = 400;
+export const MAX_SKETCH_POINTS = 40_000;
 export const MAX_URL_LENGTH = 2000;
 
 export const DEFAULT_TEXT_SIZE = { width: 220, height: 160 };
@@ -36,6 +39,7 @@ export const DEFAULT_STICKER_SIZE = { width: 104, height: 104 };
 export const DEFAULT_COLUMN_SIZE = { width: 260, height: 88 };
 export const DEFAULT_TODO_SIZE = { width: 240, height: 176 };
 export const DEFAULT_LINK_SIZE = { width: 260, height: 124 };
+export const DEFAULT_SKETCH_SIZE = { width: 360, height: 270 };
 export const COLUMN_HEADER = 48;
 export const COLUMN_PAD = 8;
 export const COLUMN_GAP = 8;
@@ -88,7 +92,7 @@ export const MSG = {
   nothingToPaste: 'In der Zwischenablage ist nichts, das eingefügt werden kann.',
 } as const;
 
-export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link';
+export type CardTypeName = 'text' | 'image' | 'board' | 'sticker' | 'column' | 'todo' | 'link' | 'sketch';
 
 export function minSizeFor(type: CardTypeName): { width: number; height: number } {
   if (type === 'text') return MIN_TEXT_SIZE;
@@ -97,6 +101,7 @@ export function minSizeFor(type: CardTypeName): { width: number; height: number 
   if (type === 'column') return MIN_COLUMN_SIZE;
   if (type === 'todo') return MIN_TODO_SIZE;
   if (type === 'link') return MIN_LINK_SIZE;
+  if (type === 'sketch') return MIN_SKETCH_SIZE;
   return MIN_BOARD_SIZE;
 }
 
@@ -107,5 +112,6 @@ export function defaultSizeFor(type: CardTypeName): { width: number; height: num
   if (type === 'column') return DEFAULT_COLUMN_SIZE;
   if (type === 'todo') return DEFAULT_TODO_SIZE;
   if (type === 'link') return DEFAULT_LINK_SIZE;
+  if (type === 'sketch') return DEFAULT_SKETCH_SIZE;
   return DEFAULT_BOARD_SIZE;
 }

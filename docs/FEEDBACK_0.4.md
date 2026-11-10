@@ -59,9 +59,21 @@ Stand: 47 Unit-Tests und 32 Oberflächentests grün, zweimal hintereinander.
 | C6 Linien | Eine markierte Linie zeigt Griffe an beiden Enden. Ziehen verschiebt das Ende, über einer Karte dockt es an deren Kante an. Rückgängig ist möglich. |
 | D3 Vorlagen | Unter „Mehr“: Kanban (3 Spalten), Wochenplan (7 Tage + Liste), Moodboard. Eingefügt wie kopierte Karten, mit einem Schritt rückgängig. |
 
+### Neu eingebaut (vierter Schritt)
+
+Stand: 49 Unit-Tests und 35 Oberflächentests grün, zweimal hintereinander.
+
+| Bereich | Was jetzt geht |
+|---|---|
+| C2 Textformatierung | Notizen zeigen `# Überschrift`, `- Liste`, `1. Liste`, `[ ]`/`[x]`, `**fett**`, `*kursiv*`, `~~durch~~`, `` `Code` `` und klickbare Links (öffnen im Browser). Strg+B/Strg+I umschließen die Markierung. Dargestellt wird ausschließlich über React-Elemente, Kartentext kann kein HTML einschleusen. Die Kartenhöhe misst die formatierte Ansicht. Die Suche zeigt Treffer ohne Formatierungszeichen. |
+| C9 Animationen | Kurze Übergänge (120 ms) an Knöpfen, Menüs, Suche und Hinweisen. Fläche, Karten und Linien bewegen sich nie animiert, damit Ziehen exakt bleibt. Mit „Animationen aus“ in Windows (`prefers-reduced-motion`) ist alles still. |
+| C2 Schrift | „Schrift: Hand / Klar“ oben schaltet zwischen Patrick Hand und Segoe UI. Die Wahl wird gemerkt, Karten messen ihre Höhe danach neu. |
+| C9 Minikarte | „Karte“ im Zoom-Feld blendet eine Übersicht ein (Notizen in ihrer Farbe). Man kann darin ziehen und zoomen. Die Wahl wird gemerkt. |
+| D2 Zeichnen | Werkzeug „Zeichnen“ (Taste P): Klick legt eine Skizze an. Darin zeichnet man mit Maus, Stift oder Finger, mit 6 Farben, fein oder dick, „Strich weg“ und „Fertig“. Escape oder ein Klick daneben beendet das Zeichnen. Eine leer verlassene Skizze verschwindet wieder. Striche werden relativ zur Karte gespeichert und beim Vergrößern proportional mitskaliert. Das Dateiformat prüft Farben, Punktzahl (höchstens 40 000) und Wertebereich. |
+
 Strg+Z in einer Notiz macht wie bisher nur Zeichen für Zeichen rückgängig (Verhalten von Chromium, war schon in 0.4.0 so). Das Board selbst bleibt davon unberührt. Das ist getestet.
 
-Noch offen: B3, B8, B10–B16, aus C die Punkte Textformatierung, gebogene Linien, Hilfslinien, Minikarte, Animationen, Notizfarben-Palette und dunkles Thema, und aus D Datei-Anhang, Startseite, Export, Zeichnen, Formen, Farbfeld, Kommentar und Tabelle.
+Noch offen: B3, B8, B10–B16, aus C gebogene Linien, Hilfslinien, Notizfarben-Palette und dunkles Thema, und aus D Datei-Anhang, Startseite, Export, Formen, Farbfeld, Kommentar und Tabelle.
 
 ## 0. Kurzfazit
 

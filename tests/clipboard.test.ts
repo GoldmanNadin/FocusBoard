@@ -120,6 +120,8 @@ describe('search and templates', () => {
     expect(hits[0]).toMatchObject({ boardId: 'childboard', boardTitle: 'Urlaub', cardId: 'textcard1', kind: 'Notiz' });
     expect(searchDocument(doc, 'urlaub').map((hit) => hit.kind)).toEqual(['Board']);
     expect(searchDocument(doc, '   ')).toEqual([]);
+    doc = docOf(addTextCard(doc, 'rootboard', '# Plan\n- **Markt** am Samstag\n[x] Tickets', { x: 0, y: 400 }, { cardId: 'textcard2' }));
+    expect(searchDocument(doc, 'markt')[0]!.text).toBe('Plan Markt am Samstag Tickets');
   });
 
   it('every template produces a valid document', () => {
@@ -128,5 +130,37 @@ describe('search and templates', () => {
       if (!result.ok) throw new Error(result.error);
       expect(validateDocument(serializeDocument(result.doc)).ok).toBe(true);
     }
+  });
+});
+
+import { addSketchCard, addStroke, removeLastStroke, simplifyPoints } from '../src/shared/sketch';
+
+describe('sketches', () => {
+  it('stores simplified, clamped strokes that survive saving and loading', () => {
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addSketchCard(doc, 'rootboard', { x: 0, y: 0 }, { cardId: 'sketchcard' }));
+    doc = docOf(addStroke(doc, 'rootboard', 'sketchcard', { color: 'pink', width: 3, points: [0.1, 0.1, 0.1001, 0.1001, 0.5, 0.5, 1.4, -2] }));
+    const card = doc.boards[0]!.cards[0]!;
+    if (card.type !== 'sketch') throw new Error('no sketch');
+    expect(card.strokes[0]!.points).toEqual([0.1, 0.1, 0.5, 0.5, 1, 0]);
+    expect(validateDocument(serializeDocument(doc)).ok).toBe(true);
+    doc = docOf(removeLastStroke(doc, 'rootboard', 'sketchcard'));
+    expect((doc.boards[0]!.cards[0] as { strokes: unknown[] }).strokes).toHaveLength(0);
+  });
+
+  it('a single tap becomes a dot, broken data is refused on load', () => {
+    expect(simplifyPoints([0.3, 0.3])).toEqual([0.3, 0.3, 0.3, 0.3]);
+    let doc = createEmptyDocument({ rootId: 'rootboard' });
+    doc = docOf(addSketchCard(doc, 'rootboard', { x: 0, y: 0 }, { cardId: 'sketchcard' }));
+    doc = docOf(addStroke(doc, 'rootboard', 'sketchcard', { color: 'ink', width: 3, points: [0.1, 0.1, 0.9, 0.9] }));
+    const tamper = (change: (stroke: { color: string; points: number[] }) => void) => {
+      const raw = JSON.parse(serializeDocument(doc));
+      change(raw.boards[0].cards[0].strokes[0]);
+      return validateDocument(JSON.stringify(raw)).ok;
+    };
+    expect(tamper(() => undefined)).toBe(true);
+    expect(tamper((stroke) => (stroke.color = 'red'))).toBe(false);
+    expect(tamper((stroke) => (stroke.points[3] = 9))).toBe(false);
+    expect(tamper((stroke) => stroke.points.push(0.5))).toBe(false);
   });
 });

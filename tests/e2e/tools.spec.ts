@@ -326,3 +326,76 @@ test('a line end can be dragged onto a card and docks there', async () => {
   await expect(line).toHaveAttribute('data-target', 'point');
   await app.close();
 });
+
+test('notes show simple formatting; Ctrl+B and Ctrl+I wrap the selection', async () => {
+  const { app, page } = await launch();
+  await page.getByTestId('tool-note').click();
+  const b = await pane(page);
+  await page.mouse.click(b.x + 200, b.y + 120);
+  const editor = page.getByTestId('card-editor');
+  await editor.fill('# Einkauf\n- Milch\n- Brot\n[x] erledigt\nSiehe https://example.com und `code`\nWichtig');
+  await page.keyboard.press('Shift+Home');
+  await page.keyboard.press('Control+B');
+  await page.keyboard.press('Escape');
+  const copy = page.locator('.text-note .card-copy');
+  await expect(copy.locator('.md-heading')).toHaveText('Einkauf');
+  await expect(copy.locator('li')).toHaveCount(2);
+  await expect(copy.locator('.md-check.is-done')).toContainText('erledigt');
+  await expect(copy.locator('code')).toHaveText('code');
+  await expect(copy.locator('strong')).toHaveText('Wichtig');
+  await expect(copy.locator('script, img')).toHaveCount(0);
+  await copy.locator('a').click();
+  await expect(page.locator('.banner')).toHaveCount(0);
+  await expect.poll(() => copy.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  await app.close();
+});
+
+test('font choice and minimap are remembered', async () => {
+  const { app, page } = await launch();
+  await page.getByTestId('font-toggle').click();
+  await expect(page.locator('html')).toHaveAttribute('data-font', 'clear');
+  await page.getByTestId('minimap-toggle').click();
+  await expect(page.locator('.react-flow__minimap')).toBeVisible();
+  await page.reload();
+  await page.getByTestId('tool-note').waitFor();
+  await expect(page.locator('html')).toHaveAttribute('data-font', 'clear');
+  await expect(page.locator('.react-flow__minimap')).toBeVisible();
+  await app.close();
+});
+
+test('draw a sketch with the pen, undo a stroke, finish with Escape', async () => {
+  const { app, page } = await launch();
+  const b = await pane(page);
+  await page.keyboard.press('p');
+  await page.mouse.click(b.x + 200, b.y + 120);
+  const surface = page.getByTestId('sketch-surface');
+  await expect(page.getByTestId('sketch-done')).toBeVisible();
+  const box = (await surface.boundingBox())!;
+  const stroke = async (y: number) => {
+    await page.mouse.move(box.x + 30, box.y + y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 200, box.y + y + 40, { steps: 10 });
+    await page.mouse.up();
+  };
+  await stroke(40);
+  await page.getByTestId('pen-pink').click();
+  await stroke(120);
+  const sketch = page.locator('.card-sketch');
+  await expect(sketch).toHaveAttribute('data-strokes', '2');
+  await page.getByTestId('sketch-undo').click();
+  await expect(sketch).toHaveAttribute('data-strokes', '1');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('sketch-done')).toHaveCount(0);
+  // Like notes: drawing is one undo step, placing the card another.
+  await page.keyboard.press('Control+Z');
+  await expect(sketch).toHaveAttribute('data-strokes', '0');
+  await page.keyboard.press('Control+Z');
+  await expect(page.locator('.card-sketch')).toHaveCount(0);
+
+  // A sketch left empty disappears again.
+  await page.keyboard.press('p');
+  await page.mouse.click(b.x + 500, b.y + 300);
+  await page.mouse.click(b.x + 1000, b.y + 600);
+  await expect(page.locator('.card-sketch')).toHaveCount(0);
+  await app.close();
+});

@@ -26,6 +26,7 @@ import { addCanvasLine, anchorPosition, deleteLines, snapAnchor, updateLine } fr
 import { addLinkCard, copyCards, pasteClip, reorderCards, updateLink, type Clip } from '../../shared/clipboard';
 import { normalizeUrl } from '../../shared/document';
 import { searchDocument, type SearchHit } from '../../shared/search';
+import { addSketchCard, addStroke, removeLastStroke } from '../../shared/sketch';
 import { TEMPLATES, insertTemplate, type TemplateName } from '../../shared/templates';
 import { addTodoItem, deleteTodoItem, setTodoItemText, setTodoTitle, toggleTodoItem } from '../../shared/todos';
 import { serializeDocument, validateDocument } from '../../shared/document';
@@ -53,6 +54,7 @@ import {
   IconBoard,
   IconColumn,
   IconLink,
+  IconPen,
   IconHeading,
   IconImage,
   IconMore,
@@ -64,7 +66,7 @@ import {
   IconUndo,
 } from './components/icons';
 
-type Tool = 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link';
+type Tool = 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'draw';
 
 type ContextTarget = { kind: 'card'; id: string } | { kind: 'pane' };
 type ContextMenuState = { target: ContextTarget; ids: string[]; screen: { x: number; y: number }; point: { x: number; y: number } };
@@ -72,7 +74,7 @@ type LinkPrompt = { screen: { x: number; y: number }; point: { x: number; y: num
 type Toast = { id: number; text: string; undo: boolean };
 
 /** Single-key tool shortcuts (no modifier), shown in the tooltips. */
-const TOOL_KEYS: Record<string, Tool> = { v: 'select', n: 'note', t: 'heading', u: 'subheading', k: 'link', s: 'column', a: 'todo', l: 'line', b: 'subboard' };
+const TOOL_KEYS: Record<string, Tool> = { v: 'select', n: 'note', t: 'heading', u: 'subheading', k: 'link', s: 'column', a: 'todo', l: 'line', b: 'subboard', p: 'draw' };
 
 export function App() {
   if (!window.whiteboard) {
@@ -116,6 +118,8 @@ function Workbench() {
   const [toast, setToast] = useState<Toast | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [showMiniMap, setShowMiniMap] = useState(() => readPref('focusboard-minimap') === '1');
+  const [font, setFont] = useState<'hand' | 'clear'>(() => (readPref('focusboard-font') === 'clear' ? 'clear' : 'hand'));
   const [searchQuery, setSearchQuery] = useState('');
   const [centerRequest, setCenterRequest] = useState({ token: 0, x: 0, y: 0 });
   const clipRef = useRef<{ token: string; clip: Clip } | null>(null);
@@ -141,6 +145,18 @@ function Workbench() {
     document.documentElement.dataset.theme = doc.theme;
     localStorage.setItem('whiteboard-theme', doc.theme);
   }, [doc.theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.font = font;
+    writePref('focusboard-font', font);
+    // Text cards measure their height; let them re-measure with the new (and fully loaded) font.
+    setSyncToken((value) => value + 1);
+    void document.fonts?.ready.then(() => setSyncToken((value) => value + 1));
+  }, [font]);
+
+  useEffect(() => {
+    writePref('focusboard-minimap', showMiniMap ? '1' : '0');
+  }, [showMiniMap]);
 
   useEffect(() => {
     api.setDirty(dirty);
@@ -263,13 +279,15 @@ function Workbench() {
     const present = histRef.current.present;
     const board = getBoard(present, boardRef.current);
     const card = board?.cards.find((item) => item.id === fresh.id);
-    if (!board || card?.type !== 'text' || card.text.trim() !== '') return false;
+    const empty = card?.type === 'text' ? card.text.trim() === '' : card?.type === 'sketch' ? card.strokes.length === 0 : false;
+    if (!board || !card || !empty) return false;
     const removed = deleteCards(present, board.id, [card.id]);
     if (!removed.ok) return false;
     let next = removed.doc;
-    if (card.columnId) {
+    const columnId = card.type !== 'column' ? card.columnId : null;
+    if (columnId) {
       const after = getBoard(next, board.id);
-      if (after) next = { ...next, boards: next.boards.map((item) => (item.id === after.id ? relayoutColumn(after, card.columnId!) : item)) };
+      if (after) next = { ...next, boards: next.boards.map((item) => (item.id === after.id ? relayoutColumn(after, columnId) : item)) };
     }
     histRef.current = { past: histRef.current.past.slice(0, fresh.pastLength), present: next, future: [] };
     setHist(histRef.current);
@@ -283,7 +301,7 @@ function Workbench() {
     setMoreOpen(false);
   }
 
-  function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link', point: { x: number; y: number }) {
+  function createAt(kind: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw', point: { x: number; y: number }) {
     if (kind === 'line') {
       placeLine(point);
       return;
@@ -291,6 +309,24 @@ function Workbench() {
     if (kind === 'link') {
       openLinkPrompt(point, null, '');
       setTool('select');
+      return;
+    }
+    if (kind === 'draw') {
+      if (editingRef.current) finishEdit();
+      const result = addSketchCard(histRef.current.present, boardRef.current, point);
+      if (!result.ok) {
+        setBanner(result.error);
+        return;
+      }
+      const created = getBoard(result.doc, boardRef.current)?.cards.at(-1);
+      const settled = created ? settleCardDrop(result.doc, boardRef.current, created.id, point) : result;
+      const pastLength = histRef.current.past.length;
+      commit(settled.ok ? settled.doc : result.doc);
+      if (created) {
+        setFocusId(created.id);
+        beginEdit(created.id);
+        freshCard.current = { id: created.id, pastLength };
+      }
       return;
     }
     if (kind === 'column') {
@@ -639,7 +675,7 @@ function Workbench() {
       addStickerAt(kind, point);
       return;
     }
-    if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line' || name === 'link' || name === 'subboard') {
+    if (name === 'note' || name === 'heading' || name === 'subheading' || name === 'column' || name === 'todo' || name === 'line' || name === 'link' || name === 'subboard' || name === 'draw') {
       createAt(name, point);
     }
   }
@@ -817,6 +853,19 @@ function Workbench() {
         const result = deleteTodoItem(histRef.current.present, boardRef.current, cardId, itemId);
         if (result.ok) commit(result.doc);
       },
+      sketch: (id) => {
+        const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
+        return card?.type === 'sketch' ? card : undefined;
+      },
+      addStroke: (id, stroke) => {
+        const result = addStroke(histRef.current.present, boardRef.current, id, stroke);
+        if (!result.ok) setBanner(result.error);
+        else live(result.doc);
+      },
+      undoStroke: (id) => {
+        const result = removeLastStroke(histRef.current.present, boardRef.current, id);
+        if (result.ok) live(result.doc);
+      },
       link: (id) => {
         const card = getBoard(histRef.current.present, boardRef.current)?.cards.find((item) => item.id === id);
         return card?.type === 'link' ? card : undefined;
@@ -853,8 +902,8 @@ function Workbench() {
       const typing = isTypingTarget(event.target);
       if (event.key === 'Escape') {
         if (typing) return;
-        setEditingId(null);
-        editBefore.current = null;
+        // Ends drawing (or any other edit) and keeps the result as one undo step.
+        if (editingRef.current) finishEdit();
         setTool('select');
         setLineDraft(null);
         setSelectedLine(null);
@@ -1090,6 +1139,15 @@ function Workbench() {
           <button type="button" data-testid="search-open" aria-label="Suchen (Strg+F)" title="Suchen (Strg+F)" onClick={() => setSearchOpen(true)}>
             Suchen
           </button>
+          <button
+            type="button"
+            data-testid="font-toggle"
+            aria-label={font === 'hand' ? 'Klare Schrift verwenden' : 'Handschrift verwenden'}
+            title={font === 'hand' ? 'Auf klare Schrift umstellen' : 'Auf Handschrift umstellen'}
+            onClick={() => setFont((value) => (value === 'hand' ? 'clear' : 'hand'))}
+          >
+            {font === 'hand' ? 'Schrift: Hand' : 'Schrift: Klar'}
+          </button>
           <button type="button" data-testid="theme-toggle" aria-label={doc.theme === 'dark' ? 'Helles Thema' : 'Dunkles Thema'} onClick={() => {
             const result = setTheme(histRef.current.present, doc.theme === 'dark' ? 'light' : 'dark');
             if (result.ok) live(result.doc);
@@ -1153,6 +1211,9 @@ function Workbench() {
           </ToolButton>
           <ToolButton id="tool-todo" label="Aufgaben" short="Liste" shortcut="A" pressed={tool === 'todo'} onClick={() => chooseTool('todo')}>
             <IconTodo />
+          </ToolButton>
+          <ToolButton id="tool-draw" label="Zeichnen" short="Zeichnen" shortcut="P" pressed={tool === 'draw'} onClick={() => chooseTool('draw')}>
+            <IconPen />
           </ToolButton>
           <ToolButton id="tool-line" label="Linie" short="Linie" shortcut="L" pressed={tool === 'line'} onClick={() => chooseTool('line')}>
             <IconArrow />
@@ -1288,6 +1349,8 @@ function Workbench() {
             onDrawLine={drawLine}
             onLineEndpoint={moveLineEnd}
             centerRequest={centerRequest}
+            showMiniMap={showMiniMap}
+            onToggleMiniMap={() => setShowMiniMap((value) => !value)}
             onLayoutSync={() => setSyncToken((value) => value + 1)}
             lines={current.lines.flatMap((line) => {
               const start = anchorPosition(line.source, current.cards);
@@ -1619,6 +1682,23 @@ function imageSize(dataUrl: string): Promise<{ width: number; height: number } |
     image.onerror = () => resolve(undefined);
     image.src = dataUrl;
   });
+}
+
+/** Per-viewer preferences; storage can be unavailable, so every access is guarded. */
+function readPref(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writePref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore: the preference simply is not remembered
+  }
 }
 
 function hasTextSelection(): boolean {

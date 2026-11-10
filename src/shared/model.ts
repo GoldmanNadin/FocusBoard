@@ -28,6 +28,18 @@ export type LinkCard = Placed & {
   title: string;
 };
 
+/** One pen stroke; points are a flat [x, y, x, y, …] list, each value 0…1 relative to the card. */
+export type SketchStroke = {
+  color: LineColor;
+  width: number;
+  points: number[];
+};
+
+export type SketchCard = Placed & {
+  type: 'sketch';
+  strokes: SketchStroke[];
+};
+
 export type ImageCard = Placed & {
   type: 'image';
   fileId: string;
@@ -67,7 +79,7 @@ export type ColumnCard = {
   childIds: string[];
 };
 
-export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard;
+export type Card = TextCard | ImageCard | BoardCard | StickerCard | TodoCard | ColumnCard | LinkCard | SketchCard;
 
 export type LineColor = NoteColor | 'ink';
 

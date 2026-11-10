@@ -1,9 +1,10 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, ResizeControlVariant, type Node, type NodeProps } from '@xyflow/react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
-import type { BoardCard, ImageCard, LinkCard, StickerCard, TextCard } from '../../../shared/model';
+import { DEFAULT_HEADING_SIZE, DEFAULT_SUBHEADING_SIZE, DEFAULT_TEXT_SIZE, MIN_BOARD_SIZE, MIN_LINK_SIZE, MIN_SKETCH_SIZE, MIN_COLUMN_SIZE, MIN_IMAGE_SIZE, MIN_STICKER_SIZE, MIN_TEXT_SIZE, MIN_TODO_SIZE, NOTE_COLORS } from '../../../shared/limits';
+import type { BoardCard, ImageCard, LineColor, LinkCard, SketchCard, SketchStroke, StickerCard, TextCard } from '../../../shared/model';
 import type { FlowData } from '../flow';
 import { StickerArt } from './stickerArt';
+import { renderCardText, wrapSelection } from '../markdown';
 
 const sides = [
   ['top', Position.Top],
@@ -33,6 +34,9 @@ export type CardLookup = {
   addTodoAfter: (cardId: string, itemId: string) => string | null;
   fitTextHeight: (id: string, height: number) => void;
   link: (id: string) => LinkCard | undefined;
+  sketch: (id: string) => SketchCard | undefined;
+  addStroke: (id: string, stroke: SketchStroke) => void;
+  undoStroke: (id: string) => void;
   openLink: (url: string) => void;
   deleteTodoItem: (cardId: string, itemId: string) => void;
   startEdit: (id: string) => void;
@@ -62,6 +66,9 @@ let lookup: CardLookup = {
   addTodoAfter: () => null,
   fitTextHeight: () => undefined,
   link: () => undefined,
+  sketch: () => undefined,
+  addStroke: () => undefined,
+  undoStroke: () => undefined,
   openLink: () => undefined,
   deleteTodoItem: () => undefined,
   startEdit: () => undefined,
@@ -129,7 +136,7 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
     // Mirror text height + the 8 px margin above and below + the 1 px border on each side.
     const needed = Math.ceil(mirror.offsetHeight + 18);
     lookup.fitTextHeight(id, Math.max(baseTextHeight(card.style), needed));
-  }, [id, shown, card?.width, card?.style, card?.height]);
+  }, [id, shown, card?.width, card?.style, card?.height, document.documentElement.dataset.font, data]);
   if (!card) return null;
   const color = card.color ? NOTE_COLORS[card.color] : null;
   return (
@@ -145,9 +152,17 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
     >
       {widthResizer(selected && !data.editing, MIN_TEXT_SIZE.width)}
       <Handles visible={data.connect} />
-      <div ref={measureRef} className="card-measure" aria-hidden="true">
-        {shown}
-        {'\u200b'}
+      <div ref={measureRef} className={`card-measure${data.editing ? ' is-raw' : ''}`} aria-hidden="true">
+        {data.editing ? (
+          <>
+            {shown}
+            {'\u200b'}
+          </>
+        ) : shown ? (
+          renderCardText(shown, () => undefined)
+        ) : (
+          'Leere Notiz'
+        )}
       </div>
       {data.editing ? (
         <textarea
@@ -170,11 +185,22 @@ export function TextCardNode({ id, data, selected, positionAbsoluteX, positionAb
               event.preventDefault();
               event.stopPropagation();
               event.currentTarget.blur();
+              return;
+            }
+            const meta = event.ctrlKey || event.metaKey;
+            const marker = meta && event.key.toLowerCase() === 'b' ? '**' : meta && event.key.toLowerCase() === 'i' ? '*' : null;
+            if (marker) {
+              event.preventDefault();
+              const next = wrapSelection(event.currentTarget, marker);
+              setDraft(next);
+              lookup.commitText(id, next);
             }
           }}
         />
       ) : (
-        <div className={`card-copy${card.text ? '' : ' is-empty'}`}>{card.text || (card.style === 'note' ? 'Leere Notiz' : 'Überschrift')}</div>
+        <div className={`card-copy md${card.text ? '' : ' is-empty'}`}>
+          {card.text ? renderCardText(card.text, (url) => lookup.openLink(url)) : card.style === 'note' ? 'Leere Notiz' : 'Überschrift'}
+        </div>
       )}
     </article>
   );
@@ -435,6 +461,119 @@ export function LinkCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'l
       <button type="button" className="nodrag nopan open-board" data-testid="open-link" onClick={() => lookup.openLink(card.url)}>
         Im Browser öffnen ↗
       </button>
+    </article>
+  );
+}
+
+const PEN_COLORS: { color: LineColor; label: string; fill: string }[] = [
+  { color: 'ink', label: 'Schwarz', fill: 'var(--ink)' },
+  { color: 'pink', label: 'Rosa', fill: NOTE_COLORS.pink.fill },
+  { color: 'orange', label: 'Orange', fill: NOTE_COLORS.orange.fill },
+  { color: 'turquoise', label: 'Türkis', fill: NOTE_COLORS.turquoise.fill },
+  { color: 'green', label: 'Grün', fill: NOTE_COLORS.green.fill },
+  { color: 'yellow', label: 'Gelb', fill: NOTE_COLORS.yellow.fill },
+];
+
+/** The pen survives between sketches, like a real pen on the desk. */
+let pen: { color: LineColor; width: number } = { color: 'ink', width: 3 };
+
+function strokeColor(color: LineColor): string {
+  return color === 'ink' ? 'var(--ink)' : NOTE_COLORS[color].fill;
+}
+
+function polyline(points: number[]): string {
+  let out = '';
+  for (let i = 0; i + 1 < points.length; i += 2) out += `${points[i]},${points[i + 1]} `;
+  return out;
+}
+
+export function SketchCardNode({ id, selected, data }: NodeProps<Node<FlowData, 'sketchCard'>>) {
+  const card = lookup.sketch(id);
+  const articleRef = useRef<HTMLElement>(null);
+  const [draft, setDraft] = useState<number[] | null>(null);
+  const [tool, setTool] = useState(pen);
+  useEffect(() => {
+    if (!data.editing) return;
+    // Clicking anywhere outside the sketch ends drawing, like clicking outside a note.
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && articleRef.current?.contains(event.target)) return;
+      lookup.finishEdit();
+    };
+    window.addEventListener('pointerdown', outside, true);
+    return () => window.removeEventListener('pointerdown', outside, true);
+  }, [data.editing]);
+  if (!card) return null;
+  const choose = (next: Partial<typeof pen>) => {
+    pen = { ...pen, ...next };
+    setTool(pen);
+  };
+  const toPoint = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
+  };
+  return (
+    <article ref={articleRef} className={`card card-sketch${selected ? ' is-selected' : ''}${data.editing ? ' is-editing nodrag' : ''}`} data-strokes={card.strokes.length} data-column={card.columnId ?? ''}>
+      {!data.editing ? (
+        <NodeResizer
+          isVisible={Boolean(selected)}
+          keepAspectRatio
+          minWidth={MIN_SKETCH_SIZE.width}
+          minHeight={MIN_SKETCH_SIZE.height}
+          lineStyle={{ borderColor: 'var(--ink)' }}
+          handleStyle={{ width: 10, height: 10, borderRadius: 4, background: 'var(--ink)', border: 'none' }}
+        />
+      ) : null}
+      <Handles visible={data.connect} />
+      <svg
+        className={`sketch-surface${data.editing ? ' nodrag nopan nowheel is-drawing' : ''}`}
+        data-testid="sketch-surface"
+        viewBox="0 0 1 1"
+        preserveAspectRatio="none"
+        onPointerDown={(event) => {
+          if (!data.editing || event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setDraft(toPoint(event));
+        }}
+        onPointerMove={(event) => {
+          if (!draft) return;
+          setDraft([...draft, ...toPoint(event)]);
+        }}
+        onPointerUp={() => {
+          if (!draft) return;
+          lookup.addStroke(id, { color: tool.color, width: tool.width, points: draft });
+          setDraft(null);
+        }}
+      >
+        {card.strokes.map((stroke, index) => (
+          <polyline key={index} points={polyline(stroke.points)} stroke={strokeColor(stroke.color)} strokeWidth={stroke.width} vectorEffect="non-scaling-stroke" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+        {draft ? (
+          <polyline points={polyline(draft.length === 2 ? [...draft, ...draft] : draft)} stroke={strokeColor(tool.color)} strokeWidth={tool.width} vectorEffect="non-scaling-stroke" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        ) : null}
+      </svg>
+      {!data.editing && card.strokes.length === 0 ? <p className="sketch-hint">Doppelklick zum Zeichnen</p> : null}
+      {data.editing ? (
+        <div className="sketch-tools nodrag nopan" role="toolbar" aria-label="Stift">
+          {PEN_COLORS.map((entry) => (
+            <button
+              key={entry.color}
+              type="button"
+              className="swatch"
+              aria-label={entry.label}
+              aria-pressed={tool.color === entry.color}
+              data-testid={`pen-${entry.color}`}
+              style={{ background: entry.fill }}
+              onClick={() => choose({ color: entry.color })}
+            />
+          ))}
+          <button type="button" aria-pressed={tool.width === 3} onClick={() => choose({ width: 3 })}>Fein</button>
+          <button type="button" aria-pressed={tool.width === 8} onClick={() => choose({ width: 8 })}>Dick</button>
+          <button type="button" data-testid="sketch-undo" disabled={card.strokes.length === 0} onClick={() => lookup.undoStroke(id)}>Strich weg</button>
+          <button type="button" data-testid="sketch-done" className="sketch-done" onClick={() => lookup.finishEdit()}>Fertig</button>
+        </div>
+      ) : null}
     </article>
   );
 }

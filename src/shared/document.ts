@@ -14,6 +14,8 @@ import {
   MAX_FILES,
   MAX_TEXT_LENGTH,
   MAX_TITLE_LENGTH,
+  MAX_SKETCH_POINTS,
+  MAX_SKETCH_STROKES,
   MAX_URL_LENGTH,
   MAX_ZOOM,
   MIN_ZOOM,
@@ -33,6 +35,7 @@ import type {
   ImageFile,
   LineAnchor,
   NoteColor,
+  SketchStroke,
   StickerCard,
   StickerKind,
   TextCard,
@@ -97,7 +100,7 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
   const x = numberIn(value.x, -COORD_LIMIT, COORD_LIMIT);
   const y = numberIn(value.y, -COORD_LIMIT, COORD_LIMIT);
   if (x == null || y == null) return null;
-  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link') {
+  if (type !== 'text' && type !== 'image' && type !== 'board' && type !== 'sticker' && type !== 'column' && type !== 'todo' && type !== 'link' && type !== 'sketch') {
     return null;
   }
   const min = minSizeFor(type);
@@ -147,6 +150,11 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
       : [];
     return { id, type: 'todo', x, y, width, height, title, items, columnId: readColumnId(value.columnId) };
   }
+  if (type === 'sketch') {
+    const strokes = readStrokes(value.strokes);
+    if (!strokes) return null;
+    return { id, type: 'sketch', x, y, width, height, strokes, columnId: readColumnId(value.columnId) };
+  }
   if (type === 'link') {
     const url = typeof value.url === 'string' ? normalizeUrl(value.url) : null;
     if (!url) return null;
@@ -157,6 +165,29 @@ function readCard(value: unknown, ids: Set<string>): Card | null {
   if (!boardId) return null;
   const card: BoardCard = { id, type: 'board', x, y, width, height, boardId, columnId: readColumnId(value.columnId) };
   return card;
+}
+
+const STROKE_COLORS = new Set<string>(['ink', ...NOTE_COLOR_ORDER]);
+
+export function readStrokes(value: unknown): SketchStroke[] | null {
+  if (!Array.isArray(value) || value.length > MAX_SKETCH_STROKES) return null;
+  let total = 0;
+  const strokes: SketchStroke[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.color !== 'string' || !STROKE_COLORS.has(entry.color)) return null;
+    const width = numberIn(entry.width, 1, 24);
+    if (width == null || !Array.isArray(entry.points) || entry.points.length < 2 || entry.points.length % 2 !== 0) return null;
+    total += entry.points.length / 2;
+    if (total > MAX_SKETCH_POINTS) return null;
+    const points: number[] = [];
+    for (const point of entry.points) {
+      const checked = numberIn(point, 0, 1);
+      if (checked == null) return null;
+      points.push(checked);
+    }
+    strokes.push({ color: entry.color as SketchStroke['color'], width, points });
+  }
+  return strokes;
 }
 
 /** Accepts only http(s) addresses; adds https:// to a bare host such as example.com/page. */

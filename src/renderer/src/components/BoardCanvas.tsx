@@ -1,5 +1,6 @@
 import {
   ConnectionMode,
+  MiniMap,
   Panel,
   ReactFlow,
   ReactFlowProvider,
@@ -15,12 +16,12 @@ import {
 } from '@xyflow/react';
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { cardPositionAtPointer, wheelAction, type Viewport } from '../../../shared/gestures';
-import { MAX_ZOOM, MIN_ZOOM } from '../../../shared/limits';
+import { MAX_ZOOM, MIN_ZOOM, NOTE_COLORS } from '../../../shared/limits';
 import type { Board } from '../../../shared/model';
 import { toEdges, toNodes } from '../flow';
 import { columnAtPoint, insertionIndex } from '../../../shared/columns';
 import { COLUMN_GAP, COLUMN_HEADER, COLUMN_PAD } from '../../../shared/limits';
-import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
+import { BoardCardNode, ColumnCardNode, ImageCardNode, LinkCardNode, SketchCardNode, StickerCardNode, TextCardNode, TodoCardNode, setCardLookup, type CardLookup } from './cards';
 
 const nodeTypes = {
   textCard: TextCardNode,
@@ -30,6 +31,7 @@ const nodeTypes = {
   columnCard: ColumnCardNode,
   todoCard: TodoCardNode,
   linkCard: LinkCardNode,
+  sketchCard: SketchCardNode,
 };
 
 export type PlacementApi = {
@@ -43,10 +45,10 @@ export function BoardCanvas(props: {
   editingId: string | null;
   focusId: string | null;
   connect: boolean;
-  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'connect';
+  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'draw' | 'connect';
   lookup: CardLookup;
   placementRef: MutableRefObject<PlacementApi | null>;
-  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link', point: { x: number; y: number }) => void;
+  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw', point: { x: number; y: number }) => void;
   onPositions: (updates: { id: string; x: number; y: number }[]) => void;
   onSizes: (updates: { id: string; width: number; height: number }[]) => void;
   onDragStart: () => void;
@@ -69,6 +71,8 @@ export function BoardCanvas(props: {
   onPointer?: (point: { x: number; y: number }) => void;
   onLineEndpoint?: (lineId: string, end: 'source' | 'target', point: { x: number; y: number }) => void;
   centerRequest?: { token: number; x: number; y: number };
+  showMiniMap?: boolean;
+  onToggleMiniMap?: () => void;
 }) {
   const boardRef = useRef(props.board);
   boardRef.current = props.board;
@@ -127,9 +131,9 @@ function FlowSurface(props: {
   setEdges: (value: ReturnType<typeof toEdges> | ((current: ReturnType<typeof toEdges>) => ReturnType<typeof toEdges>)) => void;
   editingId: string | null;
   connect: boolean;
-  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'connect';
+  tool: 'select' | 'note' | 'heading' | 'subheading' | 'image' | 'column' | 'todo' | 'line' | 'subboard' | 'link' | 'draw' | 'connect';
   placementRef: MutableRefObject<PlacementApi | null>;
-  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link', point: { x: number; y: number }) => void;
+  onCreate: (tool: 'note' | 'heading' | 'subheading' | 'subboard' | 'column' | 'todo' | 'line' | 'link' | 'draw', point: { x: number; y: number }) => void;
   onPositions: (updates: { id: string; x: number; y: number }[]) => void;
   onSizes: (updates: { id: string; width: number; height: number }[]) => void;
   onDragStart: () => void;
@@ -152,6 +156,8 @@ function FlowSurface(props: {
   onPointer?: (point: { x: number; y: number }) => void;
   onLineEndpoint?: (lineId: string, end: 'source' | 'target', point: { x: number; y: number }) => void;
   centerRequest?: { token: number; x: number; y: number };
+  showMiniMap?: boolean;
+  onToggleMiniMap?: () => void;
 }) {
   const rf = useReactFlow();
   const shellRef = useRef<HTMLDivElement>(null);
@@ -277,7 +283,7 @@ function FlowSurface(props: {
     // the second click while it prepares a drag selection.
     if (props.tool === 'select') return;
     if ((event.detail ?? 1) > 1) return;
-    if (props.tool === 'note' || props.tool === 'heading' || props.tool === 'subheading' || props.tool === 'subboard' || props.tool === 'column' || props.tool === 'todo' || props.tool === 'line' || props.tool === 'link') {
+    if (props.tool === 'note' || props.tool === 'heading' || props.tool === 'subheading' || props.tool === 'subboard' || props.tool === 'column' || props.tool === 'todo' || props.tool === 'line' || props.tool === 'link' || props.tool === 'draw') {
       props.onCreate(props.tool, point);
     }
   }
@@ -496,15 +502,30 @@ function FlowSurface(props: {
           </defs>
         </svg>
         </ViewportPortal>
+        {props.showMiniMap ? (
+          <MiniMap
+            position="bottom-left"
+            pannable
+            zoomable
+            ariaLabel="Übersichtskarte"
+            nodeColor={(node) => {
+              const card = props.board.cards.find((item) => item.id === node.id);
+              if (card?.type === 'text' && card.color) return NOTE_COLORS[card.color].fill;
+              return 'var(--muted)';
+            }}
+            nodeBorderRadius={6}
+            maskColor="rgba(120, 100, 80, 0.12)"
+          />
+        ) : null}
         <Panel position="bottom-right">
-          <ZoomDock />
+          <ZoomDock showMiniMap={Boolean(props.showMiniMap)} onToggleMiniMap={props.onToggleMiniMap} />
         </Panel>
       </ReactFlow>
     </div>
   );
 }
 
-function ZoomDock() {
+function ZoomDock({ showMiniMap, onToggleMiniMap }: { showMiniMap: boolean; onToggleMiniMap?: () => void }) {
   const { x, y, zoom } = useViewport();
   const rf = useReactFlow();
   return (
@@ -528,6 +549,11 @@ function ZoomDock() {
       <button type="button" data-testid="zoom-fit" onClick={() => void rf.fitView({ duration: 0, padding: 0.12 })}>
         Alles
       </button>
+      {onToggleMiniMap ? (
+        <button type="button" data-testid="minimap-toggle" aria-pressed={showMiniMap} title="Übersichtskarte ein/aus" onClick={onToggleMiniMap}>
+          Karte
+        </button>
+      ) : null}
     </div>
   );
 }

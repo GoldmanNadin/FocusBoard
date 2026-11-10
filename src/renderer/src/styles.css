@@ -36,7 +36,18 @@
   --drag-shadow: 0 16px 30px rgba(0, 0, 0, 0.65);
 }
 
-* { box-sizing: border-box; animation: none !important; transition: none !important; }
+* { box-sizing: border-box; }
+/* Short, calm feedback on controls only. The canvas, cards and lines never animate, so dragging stays exact. */
+button, .tool-label, .swatch, .search-results button, .context-menu button { transition: background-color 120ms ease, box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease; }
+button:active:not(:disabled) { transform: scale(0.97); }
+.context-menu, .more-pop, .menu-pop, .link-prompt, .search-panel, .toast { animation: pop-in 120ms ease-out; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+.toast { animation-name: toast-in; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+:root[data-font="clear"] { --hand: "Segoe UI", "Segoe UI Variable", sans-serif; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--canvas); color: var(--chrome-ink); overflow: hidden; }
 button, input, textarea { font: inherit; color: inherit; }
@@ -346,3 +357,32 @@ html[data-theme="dark"] .insert-line { background: #fff; }
 .search-empty { margin: 4px 8px; font-size: 13px; color: var(--muted); }
 .more-pop .template-row { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .more-pop .template-row p { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* Formatted card text */
+.md p, .card-measure p { margin: 0; }
+.md ul, .md ol, .card-measure ul, .card-measure ol { margin: 0; padding-left: 1.3em; }
+.card-copy.md, .card-measure:not(.is-raw) { white-space: normal; }
+.md .md-heading, .card-measure .md-heading { font-size: 1.3em; font-weight: 700; line-height: 1.2; }
+.md .md-check.is-done { text-decoration: line-through; opacity: 0.7; }
+.md code, .card-measure code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 0.9em; background: rgba(0, 0, 0, 0.08); padding: 0 3px; border-radius: 4px; }
+.md a { color: inherit; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
+.md p, .md li { white-space: pre-wrap; }
+
+.react-flow__minimap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--chrome) !important; }
+.zoom-dock button[aria-pressed="true"] { background: #ffe14a; color: #1a1408; }
+
+.card-sketch { background: #fffdf8; overflow: hidden; }
+html[data-theme="dark"] .card-sketch { background: #161616; }
+.sketch-surface { width: 100%; height: 100%; display: block; border-radius: var(--radius); }
+.sketch-surface.is-drawing { cursor: crosshair; touch-action: none; }
+.sketch-hint { position: absolute; inset: auto 0 12px; margin: 0; text-align: center; font-size: 13px; color: var(--muted); pointer-events: none; }
+.card-sketch.is-editing { overflow: visible; box-shadow: 0 0 0 2px #ff9a2e, var(--shadow); }
+.sketch-tools {
+  position: absolute; left: 0; top: calc(100% + 8px); display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px; background: var(--chrome); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); z-index: 10; width: max-content;
+}
+.sketch-tools .swatch { width: 22px; height: 22px; border-radius: 99px; }
+.sketch-tools .swatch[aria-pressed="true"] { outline: 3px solid #ff9a2e; outline-offset: 1px; }
+.sketch-tools button:not(.swatch) { border: 1px solid var(--line); background: var(--chrome); border-radius: 9px; padding: 4px 8px; font-size: 13px; }
+.sketch-tools button[aria-pressed="true"]:not(.swatch), .sketch-tools .sketch-done { background: #ffe14a; color: #1a1408; }
+.react-flow__minimap svg { width: 200px; height: 150px; }

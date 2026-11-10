@@ -18,6 +18,17 @@ function cardTexts(card: Card, boardTitle: (id: string) => string): { kind: Sear
   return [];
 }
 
+/** Card text without the formatting marks (#, -, [x], **, ~~, `), on one line. */
+export function plain(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^\s*(#{1,3}|[-*•]|\d+[.)]|\[[ xX]\])\s+/, ''))
+    .join(' ')
+    .replace(/\*\*|~~|`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Case- and accent-insensitive search over every board, card text, list item, column and link. */
 export function searchDocument(doc: WhiteboardDocument, query: string, limit = 50): SearchHit[] {
   const fold = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('de');
@@ -37,7 +48,7 @@ export function searchDocument(doc: WhiteboardDocument, query: string, limit = 5
           boardTitle: board.title,
           cardId: card.id,
           kind: entry.kind,
-          text: entry.text.replace(/\s+/g, ' ').trim().slice(0, 140),
+          text: plain(entry.text).slice(0, 140),
           center: { x: card.x + card.width / 2, y: card.y + card.height / 2 },
         });
         if (hits.length >= limit) return hits;

@@ -126,3 +126,12 @@ export function IconBoard() {
     </Svg>
   );
 }
+
+export function IconPen() {
+  return (
+    <Svg>
+      <path d="M15.5 4.5l4 4L9 19l-5 1 1-5L15.5 4.5z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M13 7l4 4" stroke="currentColor" strokeWidth="2" />
+    </Svg>
+  );
+}
