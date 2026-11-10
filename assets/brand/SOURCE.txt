@@ -1,0 +1,1 @@
+focusboard-logo.png is the supplied FocusBoard logo. The icon files are a crop of its board symbol only. The wordmark is not included and the symbol is not redrawn.

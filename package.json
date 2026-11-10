@@ -1,0 +1,45 @@
+{
+  "name": "digitales-whiteboard",
+  "version": "0.4.0",
+  "private": true,
+  "description": "FocusBoard, persönliche Kartenfläche als lokaler Desktop-Prototyp.",
+  "author": "FocusBoard",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://cursor.com/codebase/nadin-zerlauth/digitales-whiteboard-prototyp"
+  },
+  "main": "./out/main/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.10.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "cross-env": "^10.1.0",
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^4.0.6"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "dist:win": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64"
+  }
+}

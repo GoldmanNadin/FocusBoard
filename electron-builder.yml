@@ -1,0 +1,47 @@
+appId: de.nadin.digitales-whiteboard.prototype
+productName: FocusBoard
+asar: true
+npmRebuild: false
+forceCodeSigning: false
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: TESTANLEITUNG.md
+    to: TESTANLEITUNG.md
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+  - from: LICENSE
+    to: LICENSE
+  - from: assets/brand/icon.ico
+    to: brand/icon.ico
+  - from: assets/brand/icon-256.png
+    to: brand/icon-256.png
+win:
+  icon: assets/brand/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: FocusBoard
+  artifactName: FocusBoard-Setup-${version}.${ext}
+  signExecutable: false
+  verifyUpdateCodeSignature: false
+nsis:
+  # Same GUID electron-builder derived from the unchanged appId. Keeps the 0.3 upgrade entry.
+  guid: 71db26c7-f6d1-58f4-b361-0e1cdd71ad4c
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FocusBoard
+  uninstallDisplayName: FocusBoard
+  installerIcon: assets/brand/icon.ico
+  uninstallerIcon: assets/brand/icon.ico
+  installerHeaderIcon: assets/brand/icon.ico
+  license: LICENSE
+  artifactName: FocusBoard-Setup-${version}.${ext}
