@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>English Vocab 1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one study column. A status desk on top, the 36 words as a strip of index cells, the 24-hour review timeline, then the word list. Sessions replace the column with one large card. */
+:root{
+  --paper:#F3F5FB; --surface:#FFFFFF; --ink:#18203D; --muted:#59617F; --line:#D9DEEC;
+  --accent:#2D47D2; --accent-ink:#FFFFFF; --mark:#FFE24D; --mark-ink:#18203D;
+  --good:#17855A; --bad:#C23A33;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0E1325; --surface:#161C33; --ink:#E6E9F5; --muted:#9BA3C2; --line:#2A3253;
+  --accent:#8FA3FF; --accent-ink:#0E1325; --mark:#E8CD36; --mark-ink:#151515;
+  --good:#4CC48B; --bad:#F2766C; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#0E1325; --surface:#161C33; --ink:#E6E9F5; --muted:#9BA3C2; --line:#2A3253;
+  --accent:#8FA3FF; --accent-ink:#0E1325; --mark:#E8CD36; --mark-ink:#151515;
+  --good:#4CC48B; --bad:#F2766C; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:20px 48px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.15}
+h2{font-size:1.15rem;font-weight:700}
+.eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,.row:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+mark{background:linear-gradient(transparent 12%, var(--mark) 12%, var(--mark) 88%, transparent 88%);color:var(--mark-ink);padding:0 .15em;border-radius:2px}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px}
+.brand{font-family:var(--f-display);font-weight:800;font-size:1.5rem;letter-spacing:-.01em}
+.brand small{font-weight:500;color:var(--muted);font-size:.95rem;margin-left:6px}
+.clock{font-family:var(--f-mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.clock b{color:var(--ink);font-weight:600}
+
+/* buttons */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 16px;font-weight:700;display:inline-flex;align-items:center;gap:8px;min-height:44px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb, var(--bad) 40%, var(--line))}
+.kbd{font-family:var(--f-mono);font-size:.7rem;font-weight:600;border:1px solid currentColor;border-radius:4px;padding:0 5px;opacity:.7}
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+
+/* status desk */
+.desk{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:18px;box-shadow:0 1px 0 var(--line),0 12px 30px -22px color-mix(in srgb, var(--accent) 60%, transparent)}
+.desk-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;align-items:flex-end}
+.big{font-family:var(--f-display);font-size:clamp(1.6rem,5vw,2.2rem);font-weight:800;letter-spacing:-.02em}
+.sub{color:var(--muted)}
+.kpis{display:flex;gap:22px;flex-wrap:wrap}
+.kpi{display:flex;flex-direction:column}
+.kpi b{font-family:var(--f-mono);font-size:1.25rem;font-variant-numeric:tabular-nums}
+.kpi span{font-size:.8rem;color:var(--muted)}
+
+/* word strip */
+.strip{display:grid;grid-template-columns:repeat(18,1fr);gap:4px}
+.cell{aspect-ratio:3/4;border-radius:4px;background:var(--s0);border:1px solid var(--line);max-width:100%}
+@media (max-width:520px){.strip{grid-template-columns:repeat(12,1fr)}}
+:root{--s0:transparent}
+.st0{background:transparent}
+.st1{background:color-mix(in srgb, var(--accent) 14%, var(--surface))}
+.st2{background:color-mix(in srgb, var(--accent) 30%, var(--surface))}
+.st3{background:color-mix(in srgb, var(--accent) 48%, var(--surface))}
+.st4{background:color-mix(in srgb, var(--accent) 68%, var(--surface))}
+.st5{background:var(--accent)}
+.st6{background:var(--good);border-color:var(--good)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.78rem;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:13px;border-radius:2px;border:1px solid var(--line);vertical-align:-2px;margin-right:5px}
+
+/* timeline */
+.section{display:flex;flex-direction:column;gap:12px}
+.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tl{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:84px;border-bottom:1px solid var(--line);position:relative}
+.tl .bar{background:color-mix(in srgb, var(--accent) 55%, var(--surface));border-radius:3px 3px 0 0;min-height:2px}
+.tl .bar.zero{background:var(--line);min-height:2px;height:2px}
+.tl .bar.now{background:var(--mark)}
+.tl-axis{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;font-family:var(--f-mono);font-size:.66rem;color:var(--muted)}
+.tl-axis span{white-space:nowrap;overflow:visible}
+.plan{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.plan li{display:grid;grid-template-columns:118px 1fr;gap:14px;padding:10px 0;border-top:1px solid var(--line)}
+.plan li:first-child{border-top:0}
+.plan .when{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);padding-top:2px}
+.plan .what b{display:block}
+.plan .what span{color:var(--muted);font-size:.92rem}
+@media (max-width:480px){.plan li{grid-template-columns:1fr;gap:2px}}
+
+/* word list */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:transparent;border-radius:999px;padding:5px 12px;font-size:.85rem;min-height:34px}
+.tab[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.list{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:11px 4px;border-top:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;width:100%}
+.row:hover{background:color-mix(in srgb, var(--accent) 6%, transparent)}
+.row .w{font-weight:700}
+.row .w em{font-style:normal;font-weight:400;color:var(--muted);font-size:.85rem;margin-left:8px}
+.row .d{grid-column:1/2;color:var(--muted);font-size:.92rem;min-width:0}
+.row .meta{grid-row:1/3;grid-column:2;display:flex;flex-direction:column;align-items:flex-end;gap:4px;justify-content:center}
+.pips{display:flex;gap:3px}
+.pips i{width:8px;height:8px;border-radius:50%;border:1px solid var(--line)}
+.pips i.on{background:var(--accent);border-color:var(--accent)}
+.pips.done i.on{background:var(--good);border-color:var(--good)}
+.err{font-family:var(--f-mono);font-size:.7rem;color:var(--bad)}
+
+.why{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.why div{font-size:.92rem;color:var(--muted)}
+.why b{display:block;color:var(--ink);font-family:var(--f-display);font-size:1rem}
+.foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;font-size:.82rem;color:var(--muted)}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* session */
+.sess-top{display:flex;align-items:center;gap:14px}
+.progress{flex:1;height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);transition:width .25s}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:clamp(20px,5vw,36px);display:flex;flex-direction:column;gap:20px;min-height:340px;box-shadow:0 18px 40px -30px color-mix(in srgb, var(--accent) 70%, transparent)}
+.card .kind{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.chip{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.word{font-family:var(--f-display);font-weight:800;font-size:clamp(2rem,8vw,3.2rem);letter-spacing:-.02em;line-height:1.05;overflow-wrap:anywhere}
+.prompt{font-size:clamp(1.15rem,3.6vw,1.45rem);line-height:1.4}
+.ex{font-size:1.05rem}
+.de{color:var(--muted);font-size:.95rem}
+.de b{font-family:var(--f-mono);font-size:.7rem;font-weight:600;margin-right:6px}
+.speak{border:1px solid var(--line);background:transparent;border-radius:999px;width:40px;height:40px;display:inline-grid;place-items:center;vertical-align:middle;margin-left:8px}
+.speak svg{width:18px;height:18px}
+.opts{display:grid;gap:10px}
+.opt{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px 14px;min-height:52px}
+.opt:hover:not(:disabled){border-color:var(--accent)}
+.opt .n{font-family:var(--f-mono);font-size:.75rem;width:24px;height:24px;border-radius:6px;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.opt.right{border-color:var(--good);background:color-mix(in srgb, var(--good) 14%, var(--surface))}
+.opt.wrong{border-color:var(--bad);background:color-mix(in srgb, var(--bad) 12%, var(--surface))}
+.opt:disabled{cursor:default}
+.blank{display:inline-block;min-width:5.5em;border-bottom:2px solid var(--accent);color:var(--accent);font-family:var(--f-mono);font-size:.9em;text-align:center}
+.answer{display:flex;gap:10px;flex-wrap:wrap}
+.answer input{flex:1 1 220px;min-width:0;font:inherit;font-size:1.2rem;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.answer input.right{border-color:var(--good)}
+.answer input.wrong{border-color:var(--bad)}
+.hintline{font-family:var(--f-mono);letter-spacing:.25em;color:var(--muted)}
+.fb{border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line)}
+.fb.ok{border-color:color-mix(in srgb, var(--good) 50%, var(--line));background:color-mix(in srgb, var(--good) 9%, var(--surface))}
+.fb.no{border-color:color-mix(in srgb, var(--bad) 50%, var(--line));background:color-mix(in srgb, var(--bad) 8%, var(--surface))}
+.fb .verdict{font-weight:700}
+.fb.ok .verdict{color:var(--good)}
+.fb.no .verdict{color:var(--bad)}
+.tip{font-size:.85rem;color:var(--muted)}
+.result-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column}
+.result-list li{padding:8px 0;border-top:1px solid var(--line)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+@keyframes pop{from{transform:translateY(6px);opacity:.4}to{transform:none;opacity:1}}
+.card{animation:pop .18s ease-out}
+</style>
+
+<div class="wrap" id="app" aria-live="polite"></div>
+
+<script>
+/* ---------- Vocabulary (from English_Vocab_1.docx) ---------- */
+const WORDS = [
+ {id:"eyewitness",t:1,w:"eye witness",d:"Someone who saw an event happen.",de:"Augenzeuge, Augenzeugin",ex:"An [[eye witness]] told the police that the car was red.",alt:["eyewitness"]},
+ {id:"anchor",t:1,w:"anchor person",d:"The main news presenter on TV or radio.",de:"Nachrichtensprecher/in, Moderator/in",ex:"The [[anchor person]] opened the evening news with the election results.",alt:["anchorperson","anchor"]},
+ {id:"syndicate",t:1,w:"syndicate",d:"A group working together on a business project. (As a verb, a synonym for: to distribute.)",de:"Konsortium, Syndikat; als Verb: verbreiten",ex:"A [[syndicate]] of investors bought the football club."},
+ {id:"struggle",t:1,w:"struggle",d:"To have difficulty doing something.",de:"Schwierigkeiten haben, sich abmühen",ex:"Many people [[struggle]] to wake up early in winter."},
+ {id:"tabloid",t:1,w:"tabloid",d:"A small newspaper with short, dramatic stories and lots of pictures.",de:"Boulevardzeitung",ex:"The [[tabloid]] printed a huge photo of the singer on its front page."},
+ {id:"embedded",t:1,w:"embedded",d:"Something that is included (inside something else).",de:"eingebettet",ex:"The video was [[embedded]] in the online article."},
+ {id:"deceive",t:1,w:"deceive",d:"To make someone believe something that isn't true. Synonym: to fool someone.",de:"täuschen, betrügen",ex:"The advert tried to [[deceive]] customers about the price."},
+ {id:"unsuitable",t:1,w:"unsuitable",d:"Not appropriate.",de:"ungeeignet, unpassend",ex:"This film is [[unsuitable]] for young children."},
+ {id:"versatile",t:1,w:"versatile",d:"Able to do many different things or be used in many ways.",de:"vielseitig",ex:"A smartphone is a [[versatile]] device: camera, map and phone in one."},
+ {id:"candid",t:1,w:"candid",d:"Honest.",de:"offen, ehrlich",ex:"She gave a [[candid]] interview about her mistakes."},
+ {id:"lend",t:1,w:"lend",d:"To give something to someone (for a while).",de:"(ver)leihen",ex:"Could you [[lend]] me your pen for a minute?"},
+ {id:"neatly",t:1,w:"neatly",d:"In a tidy, clean, or organized way.",de:"ordentlich, sauber",ex:"He folded his clothes [[neatly]] and put them in the drawer."},
+ {id:"breeze",t:1,w:"breeze",d:"A light, gentle wind.",de:"Brise",ex:"A cool [[breeze]] came in through the open window."},
+ {id:"mindyou",t:1,w:"mind you",d:"Be aware (used to add something important to what you just said).",de:"wohlgemerkt, allerdings",ex:"The hotel was cheap. [[Mind you]], the rooms were tiny."},
+ {id:"retro",t:1,w:"retro",d:"Something that copies or is inspired by styles, fashion, or designs from the past.",de:"retro, im Stil vergangener Zeiten",ex:"She loves [[retro]] clothes from the 1970s."},
+ {id:"fragile",t:1,w:"fragile",d:"Easily broken, damaged, or weakened.",de:"zerbrechlich",ex:"Be careful with that box, the glasses inside are [[fragile]]."},
+ {id:"soletrader",t:2,w:"sole trader",d:"The lone owner of a company.",de:"Einzelunternehmer/in",ex:"As a [[sole trader]], she runs her bakery completely on her own."},
+ {id:"partnership",t:2,w:"partnership",d:"A company run together with one or more other people.",de:"Personengesellschaft, Partnerschaft",ex:"The two lawyers formed a [[partnership]] and opened an office together."},
+ {id:"privateco",t:2,w:"private company",d:"A business whose shares are not sold to the public and are owned by a small group of people.",de:"nicht börsennotierte Gesellschaft (≈ GmbH)",ex:"Its shares are not on the stock market because it is a [[private company]]."},
+ {id:"delegate",t:2,w:"delegate",d:"A person chosen to represent others and speak or act on their behalf.",de:"Delegierte/r, Abgesandte/r",ex:"Each school sent one [[delegate]] to the student conference."},
+ {id:"fullyliable",t:2,w:"fully liable",d:"Fully responsible.",de:"voll haftbar",ex:"If the business fails, a sole trader is [[fully liable]] for all its debts."},
+ {id:"generalp",t:2,w:"general partnership",d:"A business owned by two or more people who share profits and debts.",de:"offene Gesellschaft (OG / OHG)",ex:"In a [[general partnership]], all partners share the profits and the debts."},
+ {id:"limitedp",t:2,w:"limited partnership",d:"A business with general partners (full responsibility) and limited partners (only invest, limited risk).",de:"Kommanditgesellschaft (KG)",ex:"In a [[limited partnership]], some partners only invest money and risk less."},
+ {id:"assume",t:2,w:"assume",d:"To accept something as true without proof.",de:"annehmen, vermuten",ex:"Don't [[assume]] that everyone agrees with you."},
+ {id:"plc",t:2,w:"public limited company",d:"A business whose shares can be sold to the public on a stock exchange, and whose shareholders have limited liability.",de:"Aktiengesellschaft (AG)",ex:"Anyone can buy shares in a [[public limited company]] on the stock exchange.",alt:["plc"]},
+ {id:"share",t:2,w:"share",d:"A small fraction of a company that you can buy, own or sell.",de:"Aktie, Anteil",ex:"She bought one [[share]] in the company for £50.",alt:["shares"]},
+ {id:"venture",t:2,w:"venture",d:"A risky activity (often a new business).",de:"Unternehmung, Wagnis",ex:"Opening a restaurant is a risky [[venture]]."},
+ {id:"deter",t:2,w:"deter",d:"To discourage someone from doing something.",de:"abschrecken, abhalten",ex:"High prices may [[deter]] young people from buying a house."},
+ {id:"pitches",t:2,w:"pitches",d:"Short talks or ideas meant to convince someone.",de:"Präsentationen, Verkaufsvorträge (Pitches)",ex:"The entrepreneurs gave short [[pitches]] to the investors.",alt:["pitch"]},
+ {id:"aired",t:2,w:"be aired",d:"To be shown or broadcast on TV, radio, or online.",de:"ausgestrahlt werden",ex:"The new series will [[be aired]] on Friday evening.",alt:["aired"]},
+ {id:"jot",t:2,w:"jot",d:"To write something down quickly.",de:"schnell notieren",ex:"Let me [[jot]] down your phone number.",alt:["jot down"]},
+ {id:"paving",t:2,w:"paving the way",d:"Making something possible or easier for the future.",de:"den Weg ebnen",ex:"Her research is [[paving the way]] for new medicines.",alt:["pave the way"]},
+ {id:"premises",t:2,w:"pricey premises",d:"Buildings or locations that are expensive to rent or buy.",de:"teure Geschäftsräume",ex:"Many start-ups avoid [[pricey premises]] in the city centre and work from home."},
+ {id:"surplus",t:2,w:"surplus",d:"Extra (more than is needed).",de:"Überschuss",ex:"The company sold its [[surplus]] stock at half price."},
+ {id:"den",t:2,w:"den",d:"A cave (where a wild animal lives).",de:"Höhle, Bau",ex:"The bear slept in its [[den]] all winter."},
+ {id:"proposition",t:2,w:"proposition",d:"An offer.",de:"Angebot, Vorschlag",ex:"The investors liked her business [[proposition]] and offered £50,000."}
+];
+const TOPICS = {1:"Topic 1 · Media & everyday", 2:"Topic 2 · Business"};
+const BY = Object.fromEntries(WORDS.map(w=>[w.id,w]));
+const N = WORDS.length;
+
+/* ---------- Schedule ---------- */
+const MIN = 60e3, HOUR = 60*MIN, DAY = 24*HOUR;
+// Minutes until the next review after reaching stage n. Stage 6 = learned.
+const LADDER = [0, 10, 60, 180, 360, 540];
+const STAGE_NAMES = ["Neu","Gesehen","Kurzzeit","Gefestigt","Sicher","Fast da","Sitzt"];
+
+const KEY = "ev1-state-v1";
+function blank(){ return {v:1, start:0, updated:0, cards:Object.fromEntries(WORDS.map(w=>[w.id,{s:0,due:0,ok:0,bad:0}])), exams:[]}; }
+function migrate(s){
+  const b = blank();
+  if(!s || typeof s!=="object" || !s.cards) return b;
+  for(const w of WORDS){ if(s.cards[w.id]) b.cards[w.id] = Object.assign(b.cards[w.id], s.cards[w.id]); }
+  b.start = s.start||0; b.updated = s.updated||0; b.exams = Array.isArray(s.exams)? s.exams.slice(-20):[];
+  return b;
+}
+let state = blank();
+try{ const raw = localStorage.getItem(KEY); if(raw) state = migrate(JSON.parse(raw)); }catch(e){}
+
+function interval(stage){
+  const base = LADDER[stage]*MIN, now = Date.now();
+  if(!state.start) return base;
+  const deadline = state.start + DAY;
+  if(now >= deadline) return base;
+  // Compress the ladder so every word can still reach "Sitzt" before the 24 hours run out.
+  const left = 6 - stage, slot = (deadline - now - 20*MIN) / Math.max(1,left);
+  return Math.min(base, Math.max(slot, 3*MIN));
+}
+const C = id => state.cards[id];
+function dueIds(now=Date.now()){ return WORDS.filter(w=>{const c=C(w.id);return c.s>=1&&c.s<6&&c.due<=now}).sort((a,b)=>C(a.id).due-C(b.id).due).map(w=>w.id); }
+function newIds(){ return WORDS.filter(w=>C(w.id).s===0).map(w=>w.id); }
+function learningIds(){ return WORDS.filter(w=>{const s=C(w.id).s;return s>=1&&s<6}).map(w=>w.id); }
+function masteredCount(){ return WORDS.filter(w=>C(w.id).s>=6).length; }
+function nextDue(){ const l=learningIds().map(id=>C(id).due).filter(d=>d>Date.now()); return l.length?Math.min(...l):0; }
+
+/* ---------- Saving: this browser + your account ---------- */
+let db=null, docRef=null, syncState="local", remoteTimer=null, writing=false, again=false;
+function save(){
+  state.updated = Date.now();
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  if(docRef){ clearTimeout(remoteTimer); remoteTimer = setTimeout(flush, 1500); }
+}
+async function flush(){
+  if(!docRef) return;
+  if(writing){ again=true; return; }
+  writing=true;
+  try{ await docRef.set(JSON.parse(JSON.stringify(state))); syncState="cloud"; }
+  catch(e){ syncState="error"; }
+  writing=false; paintSync();
+  if(again){ again=false; flush(); }
+}
+function withTimeout(p,ms){ return Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),ms))]); }
+async function initSync(){
+  if(!(window.claude && window.claude.use)) return;
+  try{
+    const [u,d] = await Promise.all([claude.use("user"), claude.use("db")]);
+    if(!u || !d) return;
+    const uid = await u.id(); if(!uid) return;
+    db = d; docRef = db.doc("data/users/"+uid+"/vocab1");
+    const snap = await withTimeout(docRef.get(), 10000);
+    const remote = snap.exists ? snap.data() : null;
+    if(remote && (remote.updated||0) > (state.updated||0)){
+      state = migrate(JSON.parse(JSON.stringify(remote)));
+      try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+      if(view!=="session") render();
+    } else if(state.updated){ flush(); }
+    syncState="cloud"; paintSync();
+  }catch(e){ docRef=null; syncState="local"; paintSync(); }
+}
+document.addEventListener("visibilitychange",()=>{ if(document.hidden && docRef && remoteTimer){ clearTimeout(remoteTimer); flush(); } });
+
+/* ---------- Pronunciation ---------- */
+let ttsCap=null;
+function enVoice(){
+  const ss=window.speechSynthesis; if(!ss) return null;
+  const v=ss.getVoices().filter(v=>/^en/i.test(v.lang));
+  return v.find(v=>/en-GB/i.test(v.lang))||v[0]||null;
+}
+function canSpeak(){ return !!enVoice() || !!ttsCap; }
+function speak(text){
+  const v=enVoice();
+  if(v){ const ss=window.speechSynthesis; ss.cancel(); const u=new SpeechSynthesisUtterance(text); u.voice=v; u.lang=v.lang; u.rate=.92; ss.speak(u); return; }
+  if(ttsCap) ttsCap.speak(text,{language:"en"}).catch(()=>{});
+}
+if(window.speechSynthesis){ window.speechSynthesis.onvoiceschanged=()=>{ if(view==="home") render(); }; }
+async function initTts(){ if(window.claude&&window.claude.use){ try{ ttsCap = await claude.use("tts"); if(ttsCap && view==="home") render(); }catch(e){} } }
+const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+function spkBtn(text){ return canSpeak()? `<button class="speak" data-speak="${h(text)}" aria-label="Aussprache anhören" title="Anhören (S)">${SPK}</button>`:""; }
+
+/* ---------- Helpers ---------- */
+function h(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+function clozeForm(w){ const m=w.ex.match(/\[\[(.+?)\]\]/); return m?m[1]:w.w; }
+function exMark(w){ return h(w.ex).replace(/\[\[(.+?)\]\]/,"<mark>$1</mark>"); }
+function exBlank(w){ return h(w.ex).replace(/\[\[(.+?)\]\]/,'<span class="blank">?</span>'); }
+function norm(s){ return s.toLowerCase().replace(/[’']/g,"").trim().replace(/^to\s+/,"").replace(/[^a-z]/g,""); }
+function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let p=Array.from({length:n+1},(_,i)=>i); for(let i=1;i<=m;i++){ const c=[i]; for(let j=1;j<=n;j++) c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1)); p=c; } return p[n]; }
+function check(input, w, mode){
+  const got=norm(input); if(!got) return {ok:false};
+  const accepted=[w.w, clozeForm(w), ...(w.alt||[])].map(norm);
+  if(accepted.includes(got)) return {ok:true};
+  for(const a of accepted){ const tol=a.length>=11?2:a.length>=6?1:0; if(tol && lev(a,got)<=tol) return {ok:true,typo:true}; }
+  return {ok:false};
+}
+function hintFor(w,mode){ const t=mode==="cloze"?clozeForm(w):w.w; return t.split("").map((c,i)=>i===0?c:(c===" "?"  ":"_")).join(" "); }
+function fmtTime(t){ return new Date(t).toLocaleTimeString("de-AT",{hour:"2-digit",minute:"2-digit"}); }
+function fmtDur(ms){ ms=Math.max(0,ms); const m=Math.round(ms/MIN); if(m<60) return m+" min"; const hh=Math.floor(m/60), mm=m%60; return hh+" h"+(mm?" "+String(mm).padStart(2,"0")+" min":""); }
+
+/* ---------- Views ---------- */
+const app=document.getElementById("app");
+let view="home", S=null, listTopic=0, listSort="doc", confirmReset=false;
+
+function render(){ if(view==="session") renderSession(); else if(view==="summary") renderSummary(); else renderHome(); }
+
+function header(){
+  let clock;
+  if(!state.start) clock = `24 h starten mit deiner ersten Runde`;
+  else { const left=state.start+DAY-Date.now(); clock = left>0? `noch <b>${fmtDur(left)}</b> · Ziel ${fmtTime(state.start+DAY)}` : `24 h vorbei · weiter festigen`; }
+  return `<header class="top"><div class="brand">English Vocab 1<small>24-h-Trainer</small></div><div class="clock" id="clock">${clock}</div></header>`;
+}
+
+function primaryAction(){
+  const due=dueIds().length, nw=newIds().length, m=masteredCount();
+  if(due>0) return {big:`${due} ${due===1?"Wort":"Wörter"} fällig`, sub: nw? `Danach kommen bis zu 6 neue Wörter dazu (noch ${nw} neu).`:"Wiederhole sie jetzt, solange sie frisch fällig sind.", btn:"Runde starten", act:"learn"};
+  if(nw>0) return {big: state.start? `${nw} neue Wörter warten`:`36 Wörter in 24 Stunden`, sub: state.start? "Nimm das nächste 6er-Päckchen dazu.":"Du lernst sie in 6er-Päckchen. Die App plant jede Wiederholung genau dann, wenn du kurz vor dem Vergessen bist.", btn: state.start?"Nächste 6 Wörter":"Los geht's", act:"learn"};
+  if(m===N) return {big:"Alle 36 Wörter sitzen", sub:"Mach die Prüfungssimulation. Falsche Wörter kommen automatisch zurück in die Wiederholung.", btn:"Prüfungssimulation", act:"exam"};
+  const nd=nextDue(), cnt=learningIds().filter(id=>C(id).due<=nd+15*MIN).length;
+  return {big:`Pause bis ${fmtTime(nd)}`, sub:`Nächste Runde in ${fmtDur(nd-Date.now())} mit ${cnt} ${cnt===1?"Wort":"Wörtern"}. Die Pause ist Teil der Methode: abrufen nach etwas Vergessen festigt stärker.`, btn:"Trotzdem üben", act:"practice", ghost:true};
+}
+
+function renderHome(){
+  const pa=primaryAction(), m=masteredCount(), learning=learningIds().length, due=dueIds().length;
+  const lastExam=state.exams[state.exams.length-1];
+  const strip = WORDS.map(w=>`<div class="cell st${Math.min(6,C(w.id).s)}" title="${h(w.w)}: ${STAGE_NAMES[Math.min(6,C(w.id).s)]}"></div>`).join("");
+  const legend = STAGE_NAMES.map((n,i)=>`<span><i class="st${i}"></i>${n}</span>`).join("");
+
+  // 24-hour timeline of upcoming reviews
+  const base = state.start || Date.now(), now=Date.now();
+  const counts = Array(24).fill(0);
+  if(state.start){ for(const id of learningIds()){ const d=Math.max(C(id).due, now); const k=Math.floor((d-base)/HOUR); if(k>=0&&k<24) counts[k]++; } }
+  const nowIdx = Math.min(23,Math.max(0,Math.floor((now-base)/HOUR)));
+  const mx = Math.max(1,...counts);
+  const bars = counts.map((c,i)=>`<div class="bar ${c?"":"zero"} ${state.start&&i===nowIdx?"now":""}" style="height:${c?Math.max(8,c/mx*100):0}%" title="${fmtTime(base+i*HOUR)}: ${c} Wiederholungen"></div>`).join("");
+  const axis = counts.map((_,i)=>`<span>${i%4===0?fmtTime(base+i*HOUR):""}</span>`).join("");
+
+  const t0 = base;
+  const plan = [
+    [state.start?fmtTime(t0):"jetzt", "Runde 1 · alle Wörter kennenlernen", "6er-Päckchen: ansehen, laut sagen, sofort abfragen. Nach 10 min kommen sie zurück. Etwa 40 bis 50 Minuten."],
+    ["≈ "+fmtTime(t0+HOUR+30*MIN), "Runde 2 · erste Wiederholung", "Etwa 10 Minuten. Jetzt schreibst du die Wörter selbst."],
+    ["≈ "+fmtTime(t0+4*HOUR), "Runde 3 · Lückensätze", "Etwa 10 Minuten. Das Wort im Satz einsetzen."],
+    ["vor dem Schlafen", "Runde 4 · erklären", "Erkläre jedes Wort auf Englisch. Im Schlaf wird gefestigt, was du kurz vorher wiederholt hast."],
+    ["nach dem Aufstehen", "Runde 5 · letzter Abruf", "Gemischte Abfrage ohne Hilfe. Danach gilt ein Wort als „Sitzt“."],
+    [state.start?"bis "+fmtTime(t0+DAY):"vor dem Test", "Prüfungssimulation", "Alle 36 Wörter am Stück. Fehler kommen zurück in die Wiederholung."]
+  ].map(p=>`<li><div class="when">${h(p[0])}</div><div class="what"><b>${h(p[1])}</b><span>${h(p[2])}</span></div></li>`).join("");
+
+  let ws = WORDS.filter(w=>!listTopic||w.t===listTopic);
+  if(listSort==="hard") ws = ws.slice().sort((a,b)=>(C(b.id).bad-C(a.id).bad)||(C(a.id).s-C(b.id).s));
+  const rows = ws.map(w=>{ const c=C(w.id), s=Math.min(6,c.s);
+    const pips = Array.from({length:6},(_,i)=>`<i class="${i<s?"on":""}"></i>`).join("");
+    return `<button class="row" data-speak="${h(w.w)}" title="Anhören"><div class="w">${h(w.w)}<em>${h(w.de)}</em></div><div class="d">${h(w.d)}</div><div class="meta"><span class="pips ${s>=6?"done":""}" aria-label="${STAGE_NAMES[s]}">${pips}</span>${c.bad?`<span class="err">${c.bad}× falsch</span>`:""}</div></button>`; }).join("");
+
+  app.innerHTML = `${header()}
+  <section class="desk">
+    <div class="desk-head">
+      <div><div class="eyebrow">Als Nächstes</div><div class="big">${h(pa.big)}</div></div>
+      <div class="kpis">
+        <div class="kpi"><b>${m}/${N}</b><span>sitzen</span></div>
+        <div class="kpi"><b>${learning}</b><span>in Arbeit</span></div>
+        <div class="kpi"><b>${lastExam?lastExam.score+"%":"–"}</b><span>letzte Prüfung</span></div>
+      </div>
+    </div>
+    <p class="sub" style="margin:0;max-width:62ch">${h(pa.sub)}</p>
+    <div class="btns">
+      <button class="btn ${pa.ghost?"":"primary"}" data-act="${pa.act}">${h(pa.btn)} <span class="kbd">Enter</span></button>
+      ${pa.act!=="exam" && (m+learning)>=6 ? `<button class="btn ghost" data-act="exam">Prüfungssimulation</button>`:""}
+      ${pa.act==="practice" && newIds().length===0 ? "" : ""}
+    </div>
+    <div class="section">
+      <div class="strip" aria-label="Fortschritt aller 36 Wörter">${strip}</div>
+      <div class="legend">${legend}</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2>Deine nächsten 24 Stunden</h2><span class="eyebrow">${state.start?"Wiederholungen pro Stunde":"Startet mit Runde 1"}</span></div>
+    ${state.start?`<div><div class="tl">${bars}</div><div class="tl-axis">${axis}</div></div>`:""}
+    <ol class="plan">${plan}</ol>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2>Alle Wörter</h2>
+      <div class="tabs">
+        <button class="tab" data-topic="0" aria-pressed="${listTopic===0}">Alle</button>
+        <button class="tab" data-topic="1" aria-pressed="${listTopic===1}">Topic 1</button>
+        <button class="tab" data-topic="2" aria-pressed="${listTopic===2}">Topic 2</button>
+        <button class="tab" data-sort aria-pressed="${listSort==="hard"}">Schwierigste zuerst</button>
+      </div>
+    </div>
+    <div class="list">${rows}</div>
+  </section>
+
+  <section class="why">
+    <div><b>Abrufen statt lesen</b>Jede Karte fragt dich ab. Aktives Erinnern bringt etwa doppelt so viel wie wiederholtes Durchlesen.</div>
+    <div><b>Wachsende Abstände</b>10 min, 1 h, 3 h, 6 h, 9 h. Die Abstände werden enger, wenn die 24 h knapp werden.</div>
+    <div><b>Steigende Schwierigkeit</b>Erst auswählen, dann selbst schreiben, dann im Satz einsetzen, dann erklären.</div>
+  </section>
+
+  <footer class="foot">
+    <span id="sync">${syncText()}</span>
+    ${confirmReset?`<span class="confirm">Alles auf Anfang setzen? <button class="btn danger" data-act="reset-yes">Ja, zurücksetzen</button><button class="btn ghost" data-act="reset-no">Abbrechen</button></span>`:`<button class="btn ghost" data-act="reset">Fortschritt zurücksetzen</button>`}
+  </footer>`;
+}
+function syncText(){ return syncState==="cloud"?"Fortschritt wird in deinem Konto gespeichert.":syncState==="error"?"Speichern im Konto hat nicht geklappt. Dieser Browser hat den Stand.":"Fortschritt wird in diesem Browser gespeichert."; }
+function paintSync(){ const el=document.getElementById("sync"); if(el) el.textContent=syncText(); }
+
+/* ---------- Sessions ---------- */
+function startSession(mode){
+  let q=[];
+  if(mode==="learn"){
+    const due=dueIds().slice(0,15);
+    q = shuffle(due).map(id=>({id,kind:"review"}));
+    if(due.length<12){
+      const nw=newIds().slice(0,6);
+      for(let i=0;i<nw.length;i+=3){
+        const chunk=nw.slice(i,i+3);
+        chunk.forEach(id=>q.push({id,kind:"intro"}));
+        shuffle(chunk).forEach(id=>q.push({id,kind:"review"}));
+      }
+    }
+    if(!q.length){ mode="practice"; }
+  }
+  if(mode==="practice"){
+    let pool=learningIds().sort((a,b)=>C(a).due-C(b).due).slice(0,10);
+    if(!pool.length) pool=shuffle(WORDS.map(w=>w.id)).slice(0,10);
+    q=pool.map(id=>({id,kind:"practice"}));
+  }
+  if(mode==="exam"){
+    q=shuffle(WORDS.filter(w=>C(w.id).s>=1).map(w=>w.id)).map((id,i)=>({id,kind:"exam",ex:i%2?"cloze":"type"}));
+  }
+  if(!state.start && mode==="learn"){ state.start=Date.now(); save(); }
+  S={mode,queue:q,done:0,ok:0,answered:0,wrong:new Set(),cur:null};
+  view="session"; next();
+}
+function pickEx(item){
+  const c=C(item.id);
+  if(item.ex) return item.ex;
+  if(item.kind==="intro") return "intro";
+  if(item.kind==="relearn") return "mc_def";
+  if(item.kind==="practice") return shuffle(["type","cloze","mc_word"])[0];
+  return ["mc_def","mc_word","type","cloze","explain", Math.random()<.5?"type":"cloze"][Math.min(5,c.s)];
+}
+function next(){
+  if(!S.queue.length){ finishSession(); return; }
+  const item=S.queue.shift(), w=BY[item.id], ex=pickEx(item);
+  let opts=null;
+  if(ex==="mc_def"||ex==="mc_word"){
+    const others=shuffle(WORDS.filter(x=>x.t===w.t&&x.id!==w.id)).slice(0,3);
+    opts=shuffle([w,...others]);
+  }
+  S.cur={item,w,ex,opts,answered:false,res:null,hint:false,revealed:false,input:""};
+  renderSession();
+  if(ex==="intro" && autoSpeak()) speak(w.w);
+}
+function autoSpeak(){ try{ return localStorage.getItem("ev1-auto")==="1"; }catch(e){ return false; } }
+
+function grade(ok, extra={}){
+  const cur=S.cur, c=C(cur.item.id), kind=cur.item.kind, now=Date.now();
+  cur.answered=true; cur.res=Object.assign({ok},extra);
+  S.answered++; if(ok) S.ok++; else S.wrong.add(cur.item.id);
+  if(ok) c.ok=(c.ok||0)+1; else c.bad=(c.bad||0)+1;
+  c.last=now; c.seen=1;
+  const demote=()=>{ c.s = c.s<=2?1:c.s-2; };
+  if(kind==="review"){
+    if(ok && !cur.hint){ c.s=Math.min(6,c.s+1); c.due = c.s>=6?0:now+interval(c.s); }
+    else if(ok && cur.hint){ if(c.s<1) c.s=1; c.due=now+10*MIN; }
+    else { demote(); c.due=now+10*MIN; requeue(cur.item.id); }
+  } else if(kind==="relearn"){
+    if(ok){ c.due=now+interval(Math.max(1,c.s)); } else requeue(cur.item.id);
+  } else if(kind==="practice"){
+    if(!ok){ demote(); c.due=now+10*MIN; requeue(cur.item.id); }
+  } else if(kind==="exam"){
+    if(!ok){ demote(); c.due=now+10*MIN; }
+  }
+  save();
+  renderSession();
+  if(ok && !extra.typo && !cur.hint && cur.ex!=="explain"){ const at=cur; setTimeout(()=>{ if(S&&S.cur===at&&view==="session") advance(); }, 1100); }
+}
+function requeue(id){ S.queue.splice(Math.min(3,S.queue.length),0,{id,kind:"relearn"}); }
+function advance(){ if(!S||!S.cur) return; S.done++; next(); }
+function finishSession(){
+  if(S.mode==="exam"){ const score=S.answered?Math.round(S.ok/S.answered*100):0; state.exams.push({t:Date.now(),score,n:S.answered}); save(); }
+  view="summary"; render();
+}
+
+function renderSession(){
+  const cur=S.cur, w=cur.w, total=S.done+S.queue.length+1, pct=Math.round(S.done/total*100);
+  const kindLabel={intro:"Neues Wort",review:"Abfrage",relearn:"Nochmal",practice:"Extra-Übung",exam:"Prüfung"}[cur.item.kind];
+  const exLabel={intro:"ansehen & laut sagen",mc_def:"Wort wählen",mc_word:"Bedeutung wählen",type:"Wort schreiben",cloze:"Lücke füllen",explain:"Erklären"}[cur.ex];
+  let body="";
+  if(cur.ex==="intro"){
+    body=`<div><span class="word"><mark>${h(w.w)}</mark></span>${spkBtn(w.w)}</div>
+      <div class="prompt">${h(w.d)}</div>
+      <div class="ex">${exMark(w)}</div>
+      <div class="de"><b>DE</b>${h(w.de)}</div>
+      <p class="tip" style="margin:0">Sag das Wort laut und bilde im Kopf einen eigenen Satz damit. Gleich wirst du abgefragt.</p>
+      <div class="btns"><button class="btn primary" data-act="next">Verstanden <span class="kbd">Enter</span></button></div>`;
+  } else if(cur.ex==="mc_def"||cur.ex==="mc_word"){
+    const isDef=cur.ex==="mc_def";
+    body=`<div class="${isDef?"prompt":"word"}">${isDef?h(w.d):h(w.w)}${!isDef?spkBtn(w.w):""}</div>
+      <div class="sub">${isDef?"Welches Wort passt zur Bedeutung?":"Was bedeutet das Wort?"}</div>
+      <div class="opts">${cur.opts.map((o,i)=>{ let cls=""; if(cur.answered){ if(o.id===w.id) cls="right"; else if(cur.res.pick===o.id) cls="wrong"; }
+        return `<button class="opt ${cls}" data-pick="${o.id}" ${cur.answered?"disabled":""}><span class="n">${i+1}</span><span>${h(isDef?o.w:o.d)}</span></button>`; }).join("")}</div>`;
+  } else if(cur.ex==="type"||cur.ex==="cloze"){
+    const isCloze=cur.ex==="cloze", canHint=!cur.answered && !cur.hint && cur.item.kind!=="exam" && C(w.id).s<5;
+    body=`${isCloze?`<div class="prompt">${exBlank(w)}</div><div class="sub">Bedeutung: ${h(w.d)}</div>`:`<div class="prompt">${h(w.d)}</div><div class="sub">Schreib das englische Wort.</div>`}
+      ${cur.hint?`<div class="hintline" aria-label="Hinweis">${h(hintFor(w,cur.ex))}</div>`:""}
+      <form class="answer" id="ansForm" autocomplete="off">
+        <input id="ans" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Deine Antwort" value="${h(cur.input)}" ${cur.answered?"readonly":""} class="${cur.answered?(cur.res.ok?"right":"wrong"):""}">
+        ${cur.answered?"":`<button class="btn primary" type="submit">Prüfen <span class="kbd">Enter</span></button>`}
+      </form>
+      ${!cur.answered?`<div class="btns">${canHint?`<button class="btn ghost" data-act="hint">Erster Buchstabe <span class="kbd">?</span></button>`:""}<button class="btn ghost" data-act="giveup">Weiß ich nicht</button></div>`:""}`;
+  } else if(cur.ex==="explain"){
+    body=`<div><span class="word">${h(w.w)}</span>${spkBtn(w.w)}</div>
+      <div class="sub">Erkläre das Wort auf Englisch, laut oder im Kopf. Dann aufdecken und ehrlich bewerten.</div>
+      ${cur.revealed?`<div class="prompt">${h(w.d)}</div><div class="ex">${exMark(w)}</div>
+        ${cur.answered?"":`<div class="btns"><button class="btn primary" data-act="knew">Gewusst <span class="kbd">Enter</span></button><button class="btn danger" data-act="didnt">Nicht gewusst <span class="kbd">N</span></button></div>`}`
+      :`<div class="btns"><button class="btn primary" data-act="reveal">Aufdecken <span class="kbd">Leertaste</span></button></div>`}`;
+  }
+  let fb="";
+  if(cur.answered && cur.ex!=="intro"){
+    const r=cur.res;
+    fb=`<div class="fb ${r.ok?"ok":"no"}">
+      <div class="verdict">${r.ok?(r.typo?"Richtig, mit Tippfehler":"Richtig"):"Noch nicht"}</div>
+      <div><b>${h(w.w)}</b>${spkBtn(w.w)} · ${h(w.d)}</div>
+      ${r.ok&&!r.typo?"":`<div class="ex">${exMark(w)}</div><div class="de"><b>DE</b>${h(w.de)}</div>`}
+      ${r.ok?"":`<div class="tip">${S.mode==="exam"?"Das Wort kommt in 10 Minuten zurück in die Wiederholung.":"Kommt in ein paar Karten nochmal."}</div>`}
+      <div class="btns"><button class="btn primary" data-act="next">Weiter <span class="kbd">Enter</span></button></div>
+    </div>`;
+  }
+  app.innerHTML=`${header()}
+    <div class="sess-top"><button class="btn ghost" data-act="quit" aria-label="Runde beenden">Beenden</button><div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div><span class="mono" style="font-size:.85rem;color:var(--muted)">${S.done}/${total}</span></div>
+    <section class="card">
+      <div class="kind"><span class="chip">${kindLabel} · ${exLabel}</span><span class="eyebrow">${h(TOPICS[w.t])}</span></div>
+      ${body}${fb}
+    </section>
+    ${cur.ex==="intro"?`<label class="tip" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="auto" ${autoSpeak()?"checked":""}> Neue Wörter automatisch vorlesen</label>`:""}`;
+  const inp=document.getElementById("ans");
+  if(inp && !cur.answered){ inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); inp.addEventListener("input",e=>{cur.input=e.target.value;}); }
+  const form=document.getElementById("ansForm");
+  if(form) form.addEventListener("submit",e=>{ e.preventDefault(); if(cur.answered) return; const v=inp.value; if(!v.trim()) return; cur.input=v; const r=check(v,w,cur.ex); grade(r.ok,{typo:!!r.typo}); });
+  const auto=document.getElementById("auto");
+  if(auto) auto.addEventListener("change",e=>{ try{ localStorage.setItem("ev1-auto", e.target.checked?"1":"0"); }catch(_){} if(e.target.checked) speak(w.w); });
+}
+
+function renderSummary(){
+  const pct=S.answered?Math.round(S.ok/S.answered*100):100, nd=nextDue(), due=dueIds().length, nw=newIds().length;
+  const wrong=[...S.wrong].map(id=>BY[id]);
+  let nextLine = due? `${due} Wörter sind schon wieder fällig.` : nd? `Nächste Wiederholung um ${fmtTime(nd)} (in ${fmtDur(nd-Date.now())}).` : masteredCount()===N? "Alle Wörter sitzen." : "";
+  app.innerHTML=`${header()}
+  <section class="desk">
+    <div class="eyebrow">${S.mode==="exam"?"Prüfungssimulation":"Runde fertig"}</div>
+    <div class="big">${S.mode==="exam"?`${pct}% · ${S.ok} von ${S.answered}`:`${S.ok} von ${S.answered} beim ersten Versuch richtig`}</div>
+    <p class="sub" style="margin:0">${h(nextLine)} ${masteredCount()}/${N} Wörter sitzen.</p>
+    <div class="btns">
+      ${due||nw?`<button class="btn primary" data-act="learn">${due?"Weiter wiederholen":"Nächste 6 neue Wörter"} <span class="kbd">Enter</span></button>`:""}
+      <button class="btn ${due||nw?"":"primary"}" data-act="home">Zur Übersicht${due||nw?"":' <span class="kbd">Enter</span>'}</button>
+    </div>
+    ${wrong.length?`<div class="section"><h2>Diese Wörter üben wir nochmal</h2><ul class="result-list">${wrong.map(w=>`<li><b>${h(w.w)}</b> · ${h(w.d)}</li>`).join("")}</ul></div>`:""}
+  </section>`;
+}
+
+/* ---------- Events ---------- */
+app.addEventListener("click",e=>{
+  const sp=e.target.closest("[data-speak]");
+  if(sp && !e.target.closest("[data-act]") ){ if(canSpeak()) speak(sp.dataset.speak); if(sp.classList.contains("speak")) return; if(sp.classList.contains("row")) return; }
+  const t=e.target.closest("[data-topic]"); if(t){ listTopic=+t.dataset.topic; render(); return; }
+  if(e.target.closest("[data-sort]")){ listSort=listSort==="hard"?"doc":"hard"; render(); return; }
+  const p=e.target.closest("[data-pick]"); if(p && S && S.cur && !S.cur.answered){ pick(p.dataset.pick); return; }
+  const a=e.target.closest("[data-act]"); if(!a) return;
+  act(a.dataset.act);
+});
+function pick(id){ const cur=S.cur; grade(id===cur.w.id,{pick:id}); }
+function act(x){
+  if(x==="learn"||x==="practice"||x==="exam"){ confirmReset=false; startSession(x); }
+  else if(x==="home"){ view="home"; S=null; render(); window.scrollTo(0,0); }
+  else if(x==="quit"){ view="home"; S=null; render(); }
+  else if(x==="next"){ if(S.cur.ex==="intro"){ C(S.cur.item.id).seen=1; save(); } advance(); }
+  else if(x==="hint"){ S.cur.hint=true; renderSession(); }
+  else if(x==="giveup"){ S.cur.input=S.cur.input||""; grade(false); }
+  else if(x==="reveal"){ S.cur.revealed=true; renderSession(); }
+  else if(x==="knew"){ grade(true); }
+  else if(x==="didnt"){ grade(false); }
+  else if(x==="reset"){ confirmReset=true; render(); }
+  else if(x==="reset-no"){ confirmReset=false; render(); }
+  else if(x==="reset-yes"){ confirmReset=false; state=blank(); save(); if(docRef) flush(); render(); }
+}
+document.addEventListener("keydown",e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const inInput = e.target.tagName==="INPUT" && e.target.type==="text";
+  if(view==="home"){ if(e.key==="Enter" && !e.target.closest("button,input")){ e.preventDefault(); act(primaryAction().act); } return; }
+  if(view==="summary"){ if(e.key==="Enter" && !e.target.closest("button")){ e.preventDefault(); const due=dueIds().length, nw=newIds().length; act(due||nw?"learn":"home"); } return; }
+  if(view!=="session"||!S||!S.cur) return;
+  const cur=S.cur;
+  if(inInput && !cur.answered){ if(e.key==="?"){ e.preventDefault(); if(!cur.hint && cur.item.kind!=="exam" && C(cur.w.id).s<5) act("hint"); } return; }
+  if(e.key==="Escape"){ act("quit"); return; }
+  if((e.key==="s"||e.key==="S") && canSpeak()){ speak(cur.w.w); return; }
+  if(cur.ex==="intro" && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); act("next"); return; }
+  if(!cur.answered){
+    if((cur.ex==="mc_def"||cur.ex==="mc_word") && /^[1-4]$/.test(e.key)){ const o=cur.opts[+e.key-1]; if(o) pick(o.id); return; }
+    if(cur.ex==="explain"){
+      if(!cur.revealed && (e.key===" "||e.key==="Enter")){ e.preventDefault(); act("reveal"); return; }
+      if(cur.revealed && e.key==="Enter"){ e.preventDefault(); act("knew"); return; }
+      if(cur.revealed && (e.key==="n"||e.key==="N")){ act("didnt"); return; }
+    }
+    return;
+  }
+  if(e.key==="Enter"){ e.preventDefault(); advance(); }
+});
+
+/* keep the clock and due counts current */
+setInterval(()=>{ if(view==="home") render(); else { const el=document.getElementById("clock"); if(el){ const tmp=document.createElement("div"); tmp.innerHTML=header(); el.innerHTML=tmp.querySelector("#clock").innerHTML; } } }, 30000);
+
+render();
+initSync();
+initTts();
+</script>
+
+</body></html>
